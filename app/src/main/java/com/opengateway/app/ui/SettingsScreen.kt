@@ -38,6 +38,7 @@ import com.opengateway.app.ModelFetcher
 import com.opengateway.app.Provider
 import com.opengateway.app.ProviderConfig
 import com.opengateway.app.SettingsRepository
+import com.opengateway.app.GitHubAuth
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,6 +144,28 @@ fun SettingsScreen() {
       }) { Text("Save & write opencode.json") }
     }
     Divider()
+    Text("GitHub sign-in (PAT)")
+    var ghToken by remember { mutableStateOf("") }
+    var ghLogin by remember { mutableStateOf("") }
+    var ghBusy by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { try { ghToken = GitHubAuth.token(ctx) ?: ""; ghLogin = GitHubAuth.login(ctx) ?: "" } catch (_: Exception) {} }
+    OutlinedTextField(ghToken, { ghToken = it }, Modifier.fillMaxWidth(), label = { Text(if (ghLogin.isNotBlank()) "GitHub @${ghLogin} (paste new PAT to swap)" else "GitHub PAT (ghp_… / github_pat_…)") })
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(onClick = { GitHubAuth.openPatPage(ctx) }) { Text("Create PAT") }
+      Button(onClick = {
+        ghBusy = true
+        scope.launch {
+          val tok = ghToken.trim()
+          if (tok.isNotBlank()) {
+            val login = GitHubAuth.fetchLogin(tok)
+            if (login != null) { GitHubAuth.saveToken(ctx, tok, login); ghLogin = login } else { ghLogin = "invalid token" }
+          }
+          ghBusy = false
+        }
+      }, enabled = !ghBusy) { Text(if (ghBusy) "Verifying…" else "Verify & save") }
+      Button(onClick = { scope.launch { GitHubAuth.logout(ctx); ghToken = ""; ghLogin = "" } }) { Text("Sign out") }
+    }
+    Divider()
     Text("Storage & permissions")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       Button(onClick = { requestStorage() }) { Text("Request media access") }
@@ -153,6 +176,6 @@ fun SettingsScreen() {
       }) { Text("All-files settings") }
     }
     Divider()
-    Text("OpenCode binary + busybox bundled (assets/bin/arm64-v8a). No Termux required. Provider/model/permission written to workspace/opencode.json and passed as --model at runtime.")
+    Text("OpenCode binary + busybox bundled (assets/bin/arm64-v8a). No Termux required. Provider/model/permission written to workspace/opencode.json and passed as --model at runtime. Git via busybox applet (ls/git/log/status).")
   }
 }
