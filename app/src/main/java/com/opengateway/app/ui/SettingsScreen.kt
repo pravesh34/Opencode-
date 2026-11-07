@@ -147,7 +147,7 @@ fun SettingsScreen() {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       Button(onClick = { requestStorage() }) { Text("Request media access") }
       Button(onClick = {
-        try { ctx.startActivity(Intent(Settings.ACTION_MANAGE_ALL_APPLICATIONS_ACCESS_PERMISSION, Uri.parse("package:${ctx.packageName}"))) } catch (_: Exception) {
+        try { ctx.startActivity(Intent("android.settings.MANAGE_ALL_APPLICATIONS_ACCESS_PERMISSION", Uri.parse("package:${ctx.packageName}"))) } catch (_: Exception) {
           try { ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))) } catch (_: Exception) {}
         }
       }) { Text("All-files settings") }
