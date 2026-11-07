@@ -67,15 +67,7 @@ class NativeTerminalActivity : AppCompatActivity(), TerminalSessionClient, Termi
     override fun onBell(session: TerminalSession) {}
     override fun onColorsChanged(session: TerminalSession) {}
     override fun onTerminalCursorStateChange(state: Boolean) {}
-    override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
     override fun getTerminalCursorStyle(): Int? = 0
-    override fun logError(tag: String?, message: String?) {}
-    override fun logWarn(tag: String?, message: String?) {}
-    override fun logInfo(tag: String?, message: String?) {}
-    override fun logDebug(tag: String?, message: String?) {}
-    override fun logVerbose(tag: String?, message: String?) {}
-    override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) {}
-    override fun logStackTrace(tag: String?, e: Exception?) {}
 
     // TerminalViewClient
     override fun onScale(scale: Float): Float = scale.coerceIn(0.5f, 2.0f)
@@ -94,6 +86,8 @@ class NativeTerminalActivity : AppCompatActivity(), TerminalSessionClient, Termi
     override fun readFnKey(): Boolean = false
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean = false
     override fun onEmulatorSet() {}
+
+    // Shared log methods (satisfy both TerminalSessionClient & TerminalViewClient)
     override fun logError(tag: String?, message: String?) {}
     override fun logWarn(tag: String?, message: String?) {}
     override fun logInfo(tag: String?, message: String?) {}

@@ -285,15 +285,14 @@ class MainActivity : AppCompatActivity() {
         // long-press: link / image / text actions
         webView.setOnLongClickListener {
             val result = webView.hitTestResult
-            when (result?.type) {
-                HitTestResult.SRC_ANCHOR_TYPE, HitTestResult.IMAGE_TYPE, HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
-                    val url = result.extra
-                    showLinkMenu(url)
+            when (result.type) {
+                WebView.HitTestResult.SRC_ANCHOR_TYPE, WebView.HitTestResult.IMAGE_TYPE, WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
+                    showLinkMenu(result.extra)
                     true
                 }
-                HitTestResult.EMAIL_TYPE -> { openInBrowser("mailto:${result.extra}"); true }
-                HitTestResult.PHONE_TYPE -> { openInBrowser("tel:${result.extra}"); true }
-                HitTestResult.GEO_TYPE -> { openInBrowser(result.extra); true }
+                WebView.HitTestResult.EMAIL_TYPE -> { result.extra?.let { openInBrowser("mailto:$it") }; true }
+                WebView.HitTestResult.PHONE_TYPE -> { result.extra?.let { openInBrowser("tel:$it") }; true }
+                WebView.HitTestResult.GEO_TYPE -> { result.extra?.let { openInBrowser(it) }; true }
                 else -> false // let WebView handle text selection
             }
         }
