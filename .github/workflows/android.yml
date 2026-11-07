@@ -27,9 +27,8 @@ jobs:
           chmod +x app/src/main/assets/bin/arm64-v8a/opencode
           # Tier 1 busybox: Alpine aarch64 static (musl) - apk = tar with data.tar.gz -> bin/busybox
           curl -fL "https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/busybox-static-1.36.1-r31.apk" -o /tmp/busybox.apk
-          tar xzf /tmp/busybox.apk -C /tmp
-          tar xzf /tmp/data.tar.gz -C /tmp
-          cp /tmp/bin/busybox app/src/main/assets/bin/arm64-v8a/busybox
+          mkdir -p /tmp/bb && tar xzf /tmp/busybox.apk -C /tmp/bb
+          cp /tmp/bb/bin/busybox.static app/src/main/assets/bin/arm64-v8a/busybox
           chmod +x app/src/main/assets/bin/arm64-v8a/busybox
           ls -lh app/src/main/assets/bin/arm64-v8a/
 
