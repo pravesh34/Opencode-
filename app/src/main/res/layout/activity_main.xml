@@ -48,7 +48,7 @@
             android:layout_width="match_parent"
             android:layout_height="3dp"
             android:background="@color/accent"
-            android:pivotX="0dp"
+            android:pivotX="0"
             android:scaleX="0"
             android:visibility="gone" />
 
@@ -88,7 +88,7 @@
             android:id="@+id/error_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="?attr/colorBackground"
+            android:background="?android:attr/colorBackground"
             android:gravity="center"
             android:orientation="vertical"
             android:padding="24dp"
@@ -137,7 +137,7 @@
 
                 <Button
                     android:id="@+id/error_settings"
-                    style="?attr/materialButtonFilledStyle"
+                    style="?attr/materialButtonStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
