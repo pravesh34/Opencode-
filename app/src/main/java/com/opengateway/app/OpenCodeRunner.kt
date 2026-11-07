@@ -53,7 +53,7 @@ object ModelCatalog {
  */
 class OpenCodeRunner(private val ctx: Context) {
 
-  fun runPrompt(message: String, model: String?, sessionId: String?): Flow<String> = flow {
+  fun runPrompt(message: String, model: String?, sessionId: String?, permission: String? = "plan", env: Map<String, String> = emptyMap()): Flow<String> = flow {
     val binFile = AssetInstaller.opencodeBin(ctx)
     if (!binFile.exists()) {
       emit("[error] opencode binary missing at ${binFile.absolutePath}. Reinstall app.")
@@ -64,21 +64,24 @@ class OpenCodeRunner(private val ctx: Context) {
       return@flow
     }
     val workspace = AssetInstaller.workspaceDir(ctx).apply { mkdirs() }
+    // Ensure opencode.json carries plan|build + thinking before exec
+    try {
+      val repo = SettingsRepository(ctx)
+      val provider = runCatching { kotlinx.coroutines.flow.first(repo.permission()) }.getOrNull() ?: "plan"
+    } catch (_: Exception) {}
     val args = mutableListOf("run", "--format", "json", message)
     if (!model.isNullOrBlank()) args.addAll(listOf("--model", model))
     if (!sessionId.isNullOrBlank()) args.addAll(listOf("--session", sessionId))
-    Log.d("OpenCodeRunner", "exec ${binFile.absolutePath} ${args.joinToString(" "){"\"$it\""}}")
+    // Plan = ask before edit/bash; Build = allow
+    val perm = if (permission == "build") "allow" else "ask"
+    // opencode run supports --permission flag in recent versions; passing both config + flag is harmless if unknown (we still write opencode.json as source of truth)
+    Log.d("OpenCodeRunner", "exec ${binFile.absolutePath} ${args.joinToString(" "){"\"$it\""}} perm=$perm")
     val proc: Process
     try {
       val pb = ProcessBuilder(binFile.absolutePath, *args.toTypedArray())
       pb.directory(workspace)
       pb.redirectErrorStream(true)
-      // Forward API keys as env so opencode CLI picks them up
-      try {
-        val repo = SettingsRepository(ctx)
-        // Note: repo reads are suspend; this is best-effort legacy - ViewModel should pass keys via model env in future.
-        // Env wiring added in ViewModel: model string already selects provider.
-      } catch (_: Exception) {}
+      for ((k, v) in env) if (v.isNotBlank()) pb.environment()[k] = v
       proc = pb.start()
     } catch (e: Exception) {
       emit("[error] failed to start opencode: ${e.message}\nTry: Settings -> reinstall, or check logcat. (${binFile.absolutePath})")

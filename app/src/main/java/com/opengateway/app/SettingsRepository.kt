@@ -19,6 +19,7 @@ class SettingsRepository(private val ctx: Context) {
     val MODEL = stringPreferencesKey("model")
     val SESSION = stringPreferencesKey("session_id")
     val THINKING = stringPreferencesKey("thinking_level") // low/medium/high/max
+    val PERMISSION = stringPreferencesKey("permission_mode") // plan|build
   }
   suspend fun provider(): String = ctx.prefs.data.map { it[PROVIDER] ?: "opencode" }.first()
   suspend fun setProvider(v: String) = ctx.prefs.edit { it[PROVIDER] = v }
@@ -26,6 +27,8 @@ class SettingsRepository(private val ctx: Context) {
   suspend fun setModel(v: String?) = ctx.prefs.edit { if (v == null) it.remove(MODEL) else it[MODEL] = v }
   suspend fun thinking(): String = ctx.prefs.data.map { it[THINKING] ?: "medium" }.first()
   suspend fun setThinking(v: String) = ctx.prefs.edit { it[THINKING] = v }
+  suspend fun permission(): String = ctx.prefs.data.map { it[PERMISSION] ?: "plan" }.first()
+  suspend fun setPermission(v: String) = ctx.prefs.edit { it[PERMISSION] = v }
   suspend fun saveKey(provider: String, key: String) = ctx.prefs.edit {
     when (provider) {
       "anthropic" -> it[ANTHROPIC_KEY] = key
@@ -36,4 +39,14 @@ class SettingsRepository(private val ctx: Context) {
   }
   suspend fun session(): String? = ctx.prefs.data.map { it[SESSION] }.first()
   suspend fun setSession(v: String) = ctx.prefs.edit { it[SESSION] = v }
+  suspend fun envForProvider(provider: String): Map<String,String> {
+    val m = ctx.prefs.data.map { it }.first()
+    return when (provider) {
+      "anthropic" -> mapOf("ANTHROPIC_API_KEY" to (m[ANTHROPIC_KEY] ?: ""))
+      "openai" -> mapOf("OPENAI_API_KEY" to (m[OPENAI_KEY] ?: ""))
+      "openrouter" -> mapOf("OPENROUTER_API_KEY" to (m[OPENROUTER_KEY] ?: ""))
+      "google" -> mapOf("GOOGLE_GENERATIVE_AI_API_KEY" to (m[GOOGLE_KEY] ?: ""))
+      else -> emptyMap()
+    }.filterValues { it.isNotBlank() }
+  }
 }

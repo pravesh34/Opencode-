@@ -17,10 +17,16 @@ class OpenCodeRunnerViewModel(private val runner: OpenCodeRunner, private val se
     if (msg.isBlank()) return
     viewModelScope.launch {
       _busy.value = true
+      val provider = try { settings.provider() } catch (_: Exception) { "opencode" }
+      val model = try { settings.model() } catch (_: Exception) { null }
+      val perm = try { settings.permission() } catch (_: Exception) { "plan" }
+      val thinking = try { settings.thinking() } catch (_: Exception) { "medium" }
+      val sess = try { settings.session() } catch (_: Exception) { null }
+      val env = try { settings.envForProvider(provider) } catch (_: Exception) { emptyMap<String,String>() }
       _messages.value = _messages.value + "You: $msg"
       try {
         var saw = false
-        runner.runPrompt(msg, settings.model(), settings.session()).collect { chunk ->
+        runner.runPrompt(msg, model, sess, perm, env).collect { chunk ->
           saw = true
           _messages.value = _messages.value + "AI: $chunk"
         }

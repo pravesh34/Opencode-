@@ -2,7 +2,6 @@ package com.opengateway.app.ui
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -20,6 +19,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,9 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import com.opengateway.app.ModelCatalog
+import com.opengateway.app.ModelFetcher
 import com.opengateway.app.Provider
+import com.opengateway.app.ProviderConfig
 import com.opengateway.app.SettingsRepository
 import kotlinx.coroutines.launch
 
@@ -46,21 +49,26 @@ fun SettingsScreen() {
   var provider by remember { mutableStateOf("opencode") }
   var model by remember { mutableStateOf("") }
   var thinking by remember { mutableStateOf("medium") }
+  var mode by remember { mutableStateOf("plan") } // plan | build
   var key by remember { mutableStateOf("") }
+  var fetching by remember { mutableStateOf(false) }
   var expandedProvider by remember { mutableStateOf(false) }
   var expandedModel by remember { mutableStateOf(false) }
   var expandedThinking by remember { mutableStateOf(false) }
   val providers = Provider.entries.map { it.id }
-  val models = remember(provider) { ModelCatalog.modelsFor(provider) }
+  var dynamicModels by remember { mutableStateOf<List<String>>(emptyList()) }
+  val models = dynamicModels.ifEmpty { ModelCatalog.modelsFor(provider) }
 
-  // Load saved once
   LaunchedEffect(Unit) {
-    provider = repo.provider()
-    model = repo.model() ?: models.firstOrNull() ?: ""
-    thinking = repo.thinking()
+    try {
+      provider = repo.provider()
+      model = repo.model() ?: models.firstOrNull() ?: ""
+      thinking = repo.thinking()
+      mode = repo.permission()
+    } catch (_: Exception) {}
   }
 
-  val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* no-op */ }
+  val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
   fun requestStorage() {
     val perms = if (Build.VERSION.SDK_INT >= 33) {
       arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO)
@@ -71,14 +79,30 @@ fun SettingsScreen() {
   }
 
   Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-    Text("Provider (default: OpenCode)")
+    Text("Multi-AI Setup (default: OpenCode)")
     ExposedDropdownMenuBox(expandedProvider, { expandedProvider = !expandedProvider }) {
       OutlinedTextField(provider, {}, Modifier.fillMaxWidth().menuAnchor(), label = { Text("Provider") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedProvider) })
       ExposedDropdownMenu(expandedProvider, { expandedProvider = false }) {
-        providers.forEach { p -> DropdownMenuItem({ Text(p) }, { provider = p; model = ModelCatalog.modelsFor(p).firstOrNull() ?: ""; expandedProvider = false }) }
+        providers.forEach { p ->
+          DropdownMenuItem({ Text(p) }, {
+            provider = p
+            dynamicModels = emptyList()
+            model = ModelCatalog.modelsFor(p).firstOrNull() ?: ""
+            expandedProvider = false
+          })
+        }
       }
     }
-    Text("Model (multiple options)")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(onClick = {
+        fetching = true
+        scope.launch {
+          dynamicModels = try { ModelFetcher.fetchModels(ctx, provider) } catch (_: Exception) { ModelCatalog.modelsFor(provider) }
+          fetching = false
+        }
+      }) { Text(if (fetching) "Fetching…" else "Fetch models") }
+    }
+    Text("Model")
     ExposedDropdownMenuBox(expandedModel, { expandedModel = !expandedModel }) {
       OutlinedTextField(model, { model = it }, Modifier.fillMaxWidth().menuAnchor(), label = { Text("Model") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedModel) })
       ExposedDropdownMenu(expandedModel, { expandedModel = false }) {
@@ -94,18 +118,32 @@ fun SettingsScreen() {
         ModelCatalog.thinkingLevels.forEach { t -> DropdownMenuItem({ Text(t) }, { thinking = t; expandedThinking = false }) }
       }
     }
+    Text("Mode: Plan (ask before edit/bash) | Build (auto-allow)")
+    SingleChoiceSegmentedButtonRow {
+      listOf("plan", "build").forEachIndexed { i, option ->
+        val selected = mode == option
+        SegmentedButton(
+          selected = selected,
+          onClick = { mode = option },
+          shape = SegmentedButtonDefaults.itemShape(index = i, count = 2)
+        ) { Text(option) }
+      }
+    }
     OutlinedTextField(key, { key = it }, Modifier.fillMaxWidth(), label = { Text("API key for $provider (blank = opencode default)") })
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       Button(onClick = {
         scope.launch {
-          repo.setProvider(provider); repo.setModel(model.takeIf { it.isNotBlank() }); repo.setThinking(thinking)
+          repo.setProvider(provider)
+          repo.setModel(model.takeIf { it.isNotBlank() })
+          repo.setThinking(thinking)
+          repo.setPermission(mode)
           if (key.isNotBlank()) repo.saveKey(provider, key.trim())
+          ProviderConfig.write(ctx, provider, model.takeIf { it.isNotBlank() }, mode, thinking)
         }
-      }) { Text("Save") }
+      }) { Text("Save & write opencode.json") }
     }
     Divider()
     Text("Storage & permissions")
-    Text("Workspace is app-private (filesDir/workspace). This app needs no broad storage access to run. Request media access only if you import files from Downloads/DCIM into workspace.")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       Button(onClick = { requestStorage() }) { Text("Request media access") }
       Button(onClick = {
@@ -115,7 +153,6 @@ fun SettingsScreen() {
       }) { Text("All-files settings") }
     }
     Divider()
-    Text("OpenCode binary + busybox are bundled in APK (assets/bin/arm64-v8a). No Termux required.")
-    Text("Thinking level + provider/model are saved and passed to opencode CLI (--model).")
+    Text("OpenCode binary + busybox bundled (assets/bin/arm64-v8a). No Termux required. Provider/model/permission written to workspace/opencode.json and passed as --model at runtime.")
   }
 }
