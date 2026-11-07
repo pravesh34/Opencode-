@@ -1,0 +1,14 @@
+{
+  "name": "open-gateway-web",
+  "version": "1.0.0",
+  "description": "Open Gateway web UI - Next.js PWA replacement, hostable on localhost:3000",
+  "type": "commonjs",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.0.0"
+  }
+}

@@ -39,4 +39,13 @@
     <string name="termux_missing">Termux app not installed — opened Terminal tab instead</string>
     <string name="opencode_setup_title">OpenCode setup (Android)</string>
     <string name="opencode_setup_body">No typing required. 1) Copy the installer command. 2) Open Termux, paste &amp; run it — it installs Node, downloads this repo, and starts the gateway on :3000. 3) Set Gateway to 127.0.0.1:3000 and reload. The in-app native terminal works offline without any of this.</string>
+    <string name="menu_gateway_start">Start gateway (in-app)</string>
+    <string name="menu_gateway_stop">Stop gateway (in-app)</string>
+    <string name="gateway_starting">Starting gateway…</string>
+    <string name="gateway_stopping">Stopping gateway…</string>
+    <string name="autostart_title">Auto-start in Termux</string>
+    <string name="autostart_body">Tap once — this sends the installer command to Termux automatically. Termux must allow external apps to run commands: Termux → Settings → Allow external apps to run commands.</string>
+    <string name="autostart_sent">Sent to Termux — if nothing happens, enable “Allow external apps to run commands” in Termux settings, or paste the command manually</string>
+    <string name="autostart_failed">Could not reach Termux. Open Termux and paste the installer command manually</string>
+    <string name="service_started">Gateway service started — reload in a few seconds</string>
 </resources>

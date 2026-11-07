@@ -1,5 +1,6 @@
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawn, execFile } = require('child_process');
 const WebSocket = require('ws');
@@ -14,16 +15,17 @@ console.log(`Project: ${PROJECT_ROOT}`);
 // Cross-platform shell: Mac ($SHELL=/bin/zsh) + Termux (bash in $PREFIX) + Linux
 function detectShell() {
   const { execSync } = require('child_process');
+  const probeShell = process.env.SHELL || process.env.PREFIX || '/bin/sh';
   const candidates = [];
   if (process.env.SHELL) candidates.push(process.env.SHELL);
-  if (process.env.PREFIX) candidates.push(`${process.env.PREFIX}/bin/bash`);
-  candidates.push('/bin/zsh', '/bin/bash', 'bash', 'zsh');
+  if (process.env.PREFIX) candidates.push(`${process.env.PREFIX}/bin/bash`, `${process.env.PREFIX}/bin/sh`);
+  candidates.push('/bin/zsh', '/bin/bash', '/bin/sh', 'bash', 'sh', 'zsh');
   for (const c of candidates) {
     if (!c) continue;
     if (c.includes('/') && fs.existsSync(c)) return c;
-    try { execSync(`command -v ${JSON.stringify(c)}`, { stdio: 'ignore', shell: '/bin/bash' }); return c; } catch {}
+    try { execSync(`command -v ${JSON.stringify(c)}`, { stdio: 'ignore', shell: probeShell }); return c; } catch {}
   }
-  return '/bin/bash';
+  return '/bin/sh';
 }
 const SHELL_BIN = detectShell();
 console.log(`Shell: ${SHELL_BIN} (${process.platform})`);
@@ -48,13 +50,15 @@ function serve(req, res) {
     if (err) {
       if (urlPath === '/api/health') {
         res.writeHead(200, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
-        return res.end(JSON.stringify({ ok: true, time: Date.now(), opencode: !!findOpencode(), shell: SHELL_BIN, platform: process.platform, project: PROJECT_ROOT }));
+        return res.end(JSON.stringify({ ok: true, time: Date.now(), opencode: !!OPENCODE, shell: SHELL_BIN, platform: process.platform, project: PROJECT_ROOT }));
       }
       if (urlPath === '/api/fs/list') {
         try {
           const u = new URL(req.url, 'http://localhost');
           const dir = u.searchParams.get('path') || PROJECT_ROOT;
-          const resolved = path.resolve(dir);
+          let resolved = path.resolve(dir);
+          if (resolved === '~' || resolved.startsWith('~/')) resolved = path.join(os.homedir(), resolved.slice(2));
+          if (!resolved.startsWith(PROJECT_ROOT) && !resolved.startsWith(os.homedir())) throw new Error('outside allowed folders');
           const entries = fs.readdirSync(resolved, { withFileTypes: true }).map(d => {
             const full = path.join(resolved, d.name);
             let size = 0; try { if (d.isFile()) size = fs.statSync(full).size; } catch {}
@@ -72,7 +76,9 @@ function serve(req, res) {
           const u = new URL(req.url, 'http://localhost');
           const filePath = u.searchParams.get('path');
           if (!filePath) throw new Error('path required');
-          const resolved = path.resolve(filePath);
+          let resolved = path.resolve(filePath);
+          if (resolved === '~' || resolved.startsWith('~/')) resolved = path.join(os.homedir(), resolved.slice(2));
+          if (!resolved.startsWith(PROJECT_ROOT) && !resolved.startsWith(os.homedir())) throw new Error('outside allowed folders');
           const st = fs.statSync(resolved);
           if (!st.isFile()) throw new Error('not a file');
           if (st.size > 200 * 1024) {
@@ -114,15 +120,18 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 function findOpencode() {
+  const home = process.env.HOME || os.homedir();
   const candidates = [
     process.env.OPENCODE_BIN,
+    path.join(home, '.opencode/bin/opencode'),
     '/Users/praveshsharna/.opencode/bin/opencode',
     'opencode',
   ].filter(Boolean);
   const { execSync } = require('child_process');
+  const probeShell = process.env.SHELL || process.env.PREFIX || '/bin/sh';
   for (const c of candidates) {
-    try { execSync(`command -v ${JSON.stringify(c)}`, { stdio: 'ignore', shell: '/bin/bash' }); return c; } catch {}
     if (fs.existsSync(c) && fs.statSync(c).isFile()) return c;
+    try { execSync(`command -v ${JSON.stringify(c)}`, { stdio: 'ignore', shell: probeShell }); return c; } catch {}
   }
   return null;
 }
@@ -144,7 +153,8 @@ function runTerminal(ws, session, cmd, pid) {
   if (lower === 'cd' || lower.startsWith('cd ')) {
     const target = line.slice(2).trim() || '~';
     try {
-      const resolved = target.startsWith('/') ? target : path.resolve(cwd, target);
+      const expanded = (target === '~' || target.startsWith('~/')) ? path.join(os.homedir(), target.slice(2)) : target;
+      const resolved = expanded.startsWith('/') ? expanded : path.resolve(cwd, expanded);
       const st = fs.statSync(resolved);
       if (st.isDirectory()) { p.cwd = resolved; session.cwd = resolved; }
       else { safeSend(ws, { type: 'terminal', projectId: id, text: `${line}\ncd: ${target}: Not a directory` }); return; }
@@ -153,8 +163,9 @@ function runTerminal(ws, session, cmd, pid) {
     return;
   }
 
-  // block obviously unsafe? allow everything (local dev)
-  const child = spawn(SHELL_BIN, ['-lc', line], { cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+  // fish needs -c (not -lc); everything else takes -lc
+  const args = SHELL_BIN.endsWith('fish') ? ['-c', line] : ['-lc', line];
+  const child = spawn(SHELL_BIN, args, { cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '';
   safeSend(ws, { type: 'terminal', projectId: id, text: `$ ${line}` });
   child.stdout.on('data', (d) => { out += d.toString(); });

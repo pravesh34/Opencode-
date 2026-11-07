@@ -11,8 +11,8 @@ android {
         applicationId = "com.opengateway.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
         buildConfigField("String", "GATEWAY_URL", "\"${providers.gradleProperty("GATEWAY_URL").orNull ?: "http://10.0.2.2:3000"}\"")
     }
 

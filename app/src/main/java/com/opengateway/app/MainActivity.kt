@@ -1,6 +1,7 @@
 package com.opengateway.app
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
@@ -30,6 +31,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -339,6 +342,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateNavMenu()
+        ensureNotificationPermission()
+        // Option 1: if the user points at localhost, try to start the in-app
+        // gateway service so the UI just works without Termux typing.
+        if (isLocalGatewayUrl(currentUrl) && !GatewayRuntime.isGatewayRunning()) {
+            GatewayService.start(this)
+        }
+    }
+
+    private fun isLocalGatewayUrl(url: String): Boolean {
+        val u = url.lowercase()
+        return u.contains("127.0.0.1") || u.contains("localhost") || u.contains("10.0.2.2")
+    }
+
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                ActivityCompat.requestPermissions(
+                    this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42
+                )
+            }
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -367,6 +394,8 @@ class MainActivity : AppCompatActivity() {
             R.id.menu_open_browser -> { openInBrowser(webView.url ?: currentUrl); true }
             R.id.menu_native_terminal -> { startActivity(Intent(this, NativeTerminalActivity::class.java)); true }
             R.id.menu_opencode_setup -> { startActivity(Intent(this, OpenCodeSetupActivity::class.java)); true }
+            R.id.menu_gateway_start -> { GatewayService.start(this); Toast.makeText(this, getString(R.string.gateway_starting), Toast.LENGTH_SHORT).show(); true }
+            R.id.menu_gateway_stop -> { GatewayService.stop(this); Toast.makeText(this, getString(R.string.gateway_stopping), Toast.LENGTH_SHORT).show(); true }
             R.id.menu_termux -> { openTermuxApp(); true }
             R.id.menu_opencode -> { openOpencodeTab(); true }
             R.id.menu_settings -> { showSettingsDialog(); true }
@@ -380,7 +409,7 @@ class MainActivity : AppCompatActivity() {
             if (pkg != null) {
                 pkg.addCategory(Intent.CATEGORY_LAUNCHER)
                 pkg.setPackage("com.termux")
-                pkg.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                pkg.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                 pkg
             } else null
         } catch (_: Exception) { null }
@@ -478,6 +507,12 @@ class MainActivity : AppCompatActivity() {
             hasFinishedFirstLoad = true
             fadeOutSplash()
         }
+        // If we point at localhost, the server may just not be running yet —
+        // start the in-app gateway service and retry shortly.
+        if (isLocalGatewayUrl(url) && !GatewayRuntime.isGatewayRunning()) {
+            GatewayService.start(this)
+            webView.postDelayed({ if (errorView.visibility == View.VISIBLE) webView.reload() }, 3000)
+        }
     }
     private fun hideError() { errorView.visibility = View.GONE }
     private fun fadeOutSplash() {
@@ -531,7 +566,6 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() { super.onPause(); webView.onPause() }
     override fun onResume() { super.onResume(); webView.onResume() }
     override fun onDestroy() {
-        try { getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager; } catch (_: Exception) {}
         try { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(networkCallback) } catch (_: Exception) {}
         try { webView.destroy() } catch (_: Exception) {}
         super.onDestroy()

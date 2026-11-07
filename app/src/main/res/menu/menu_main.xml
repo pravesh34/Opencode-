@@ -42,6 +42,14 @@
         android:title="@string/menu_opencode" />
     <item
         app:showAsAction="never"
+        android:id="@+id/menu_gateway_start"
+        android:title="@string/menu_gateway_start" />
+    <item
+        app:showAsAction="never"
+        android:id="@+id/menu_gateway_stop"
+        android:title="@string/menu_gateway_stop" />
+    <item
+        app:showAsAction="never"
         android:id="@+id/menu_settings"
         android:title="@string/menu_settings" />
 </menu>

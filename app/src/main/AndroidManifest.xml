@@ -6,6 +6,11 @@
         android:maxSdkVersion="28" />
     <!-- Termux integration (native terminal + RUN_COMMAND setup) -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- Standalone gateway service (Option 1) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <package android:name="com.termux" />
@@ -58,6 +63,11 @@
             android:exported="false"
             android:label="@string/menu_opencode_setup"
             android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <service
+            android:name=".GatewayService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

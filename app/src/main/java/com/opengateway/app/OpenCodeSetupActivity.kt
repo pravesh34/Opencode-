@@ -34,6 +34,11 @@ class OpenCodeSetupActivity : AppCompatActivity() {
             cm.setPrimaryClip(ClipData.newPlainText("setup", setupCmds))
             Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
         }
+        findViewById<Button>(R.id.btn_autostart_termux).setOnClickListener { sendToTermuxRunCommand() }
+        findViewById<Button>(R.id.btn_start_service).setOnClickListener {
+            GatewayService.start(this)
+            Toast.makeText(this, getString(R.string.service_started), Toast.LENGTH_LONG).show()
+        }
         findViewById<Button>(R.id.btn_open_termux).setOnClickListener {
             val i = packageManager.getLaunchIntentForPackage("com.termux")
             if (i != null) startActivity(i) else {
@@ -47,6 +52,32 @@ class OpenCodeSetupActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_set_localhost).setOnClickListener {
             getSharedPreferences("gateway", Context.MODE_PRIVATE).edit().putString("url", "http://127.0.0.1:3000").apply()
             Toast.makeText(this, "Gateway set to http://127.0.0.1:3000 — reopen/reload app", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * Send the installer to Termux via the RUN_COMMAND API so the user doesn't
+     * have to copy-paste. Requires in Termux: Settings → "Allow external apps
+     * to run commands" to be enabled. Falls back to a toast with instructions.
+     */
+    private fun sendToTermuxRunCommand() {
+        try {
+            val intent = Intent().apply {
+                setClassName("com.termux", "com.termux.app.RunCommandService")
+                action = "com.termux.RUN_COMMAND"
+                putExtra("com.termux.RUN_COMMAND_COMMAND", setupCmds)
+                putExtra("com.termux.RUN_COMMAND_CWD", "/data/data/com.termux/files/home")
+                putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
+                putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 0)
+            }
+            startService(intent)
+            Toast.makeText(this, getString(R.string.autostart_sent), Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            try {
+                val launch = packageManager.getLaunchIntentForPackage("com.termux")
+                if (launch != null) startActivity(launch)
+            } catch (_: Exception) {}
+            Toast.makeText(this, getString(R.string.autostart_failed), Toast.LENGTH_LONG).show()
         }
     }
 
