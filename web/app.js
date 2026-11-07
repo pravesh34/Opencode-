@@ -68,6 +68,8 @@ function connectWs() {
     wsBackoff = 1500;
     $('#ws-state').textContent = 'Connected'; $('#ws-state').className='pill ok';
     toast('Connected');
+    ws.send(JSON.stringify({type:'opencode_models'}));
+    ws.send(JSON.stringify({type:'opencode_info'}));
   };
   ws.onclose = () => {
     $('#ws-state').textContent = 'Disconnected'; $('#ws-state').className='pill bad';
@@ -83,6 +85,8 @@ function connectWs() {
     else if (j.type==='opencode_event') addOpenCode('system', '· ' + j.text);
     else if (j.type==='opencode_meta') addOpenCode('system', j.text);
     else if (j.type==='opencode_done') { clearSlowTimer(); addOpenCode('system', '— done —'); }
+    else if (j.type==='opencode_info') updateOpenCodeInfo(j);
+    else if (j.type==='opencode_models_list') fillModelList(j.models || []);
   };
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && (!ws || ws.readyState !== WebSocket.OPEN)) { wsBackoff = 1500; connectWs(); } });
@@ -119,9 +123,30 @@ $('#term-form').addEventListener('submit', e=>{
   $('#term-input').value='';
 });
 
-// OpenCode
-let opencodeCurrent = null, opencodeSlowTimer = null;
+// OpenCode (persistent session + model select)
+let opencodeCurrent = null, opencodeSlowTimer = null, currentModel = '';
 function clearSlowTimer() { if (opencodeSlowTimer) { clearTimeout(opencodeSlowTimer); opencodeSlowTimer = null; } }
+function updateOpenCodeInfo(j) {
+  const s = $('#opencode-session'); if (s) s.textContent = 'session: ' + (j.session ? String(j.session).slice(0, 14) + '…' : (j.busy ? 'running' : 'new'));
+  const m = $('#opencode-model-label'); if (m) m.textContent = 'model: ' + (j.model || 'default');
+  const cwd = $('#opencode-cwd'); if (cwd && j.cwd) cwd.textContent = j.cwd;
+  if (j.model !== undefined && document.querySelector('#opencode-model')) {
+    currentModel = j.model || '';
+    document.querySelector('#opencode-model').value = currentModel;
+  }
+}
+function fillModelList(models) {
+  const sel = $('#opencode-model'); if (!sel) return;
+  const prev = sel.value || currentModel;
+  sel.innerHTML = '<option value="">Default (auto)</option>' + models.map((m) => `<option value="${m}">${m}</option>`).join('');
+  sel.value = prev || '';
+}
+const modelSel = $('#opencode-model');
+if (modelSel) modelSel.addEventListener('change', () => {
+  currentModel = modelSel.value;
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:'opencode_set_model', model: currentModel || null}));
+  toast(currentModel ? `Model: ${currentModel}` : 'Model: default');
+});
 function addOpenCode(role, text) {
   if (role==='assistant') {
     if (!opencodeCurrent) {

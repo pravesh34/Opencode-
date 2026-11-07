@@ -72,7 +72,18 @@
   </section>
 
   <section id="panel-opencode" class="panel">
-    <div class="card" style="margin-bottom:8px"><p style="margin:0;font-size:13px">Powered by local <code>opencode run</code> CLI. Session is kept so follow-ups continue the same conversation. Use <b>New session</b> to reset.</p></div>
+    <div class="card" style="margin-bottom:8px">
+      <p style="margin:0 0 8px;font-size:13px">Powered by local <code>opencode run</code> CLI. The session stays alive across messages (same conversation), and it works in the current project. Use <b>New session</b> to start fresh.</p>
+      <div class="row" style="margin-top:0">
+        <span class="pill" id="opencode-session">session: —</span>
+        <span class="pill" id="opencode-model-label">model: default</span>
+      </div>
+      <label>Model</label>
+      <select id="opencode-model">
+        <option value="">Default (auto)</option>
+      </select>
+      <p style="color:var(--muted);font-size:12px;margin:6px 0 0">Working in: <code id="opencode-cwd">—</code> · choose a model — it applies to the whole session.</p>
+    </div>
     <div id="opencode-messages"></div>
     <form class="composer" id="opencode-form">
       <button type="button" class="btn secondary" id="opencode-reset">New</button>

@@ -8,6 +8,8 @@ const PORT = process.env.PORT || 3000;
 const WS_PORT = process.env.WS_PORT || 8080;
 
 const root = __dirname;
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+console.log(`Project: ${PROJECT_ROOT}`);
 
 // Cross-platform shell: Mac ($SHELL=/bin/zsh) + Termux (bash in $PREFIX) + Linux
 function detectShell() {
@@ -46,7 +48,7 @@ function serve(req, res) {
     if (err) {
       if (urlPath === '/api/health') {
         res.writeHead(200, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
-        return res.end(JSON.stringify({ ok: true, time: Date.now(), opencode: !!findOpencode(), shell: SHELL_BIN, platform: process.platform }));
+        return res.end(JSON.stringify({ ok: true, time: Date.now(), opencode: !!findOpencode(), shell: SHELL_BIN, platform: process.platform, project: PROJECT_ROOT }));
       }
       res.writeHead(404); return res.end('Not found');
     }
@@ -123,24 +125,58 @@ function runTerminal(ws, session, cmd) {
   });
 }
 
-// ---------- OpenCode ----------
+// ---------- OpenCode (persistent session: queue, keep sessionID + model alive) ----------
+function listModels() {
+  if (!OPENCODE) return [];
+  return new Promise((resolve) => {
+    const child = spawn(OPENCODE, ['models'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d.toString(); });
+    child.on('close', () => resolve(out.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 40)));
+    child.on('error', () => resolve([]));
+  });
+}
+
+function opencodeInfo(session) {
+  return { session: session.opencodeSession, model: session.model || null, cwd: PROJECT_ROOT, busy: !!session.busy };
+}
+
+function processQueue(ws, session) {
+  if (session.busy || session.queue.length === 0) return;
+  const message = session.queue.shift();
+  session.busy = true;
+  safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session) });
+  runOpencodeNow(ws, session, message);
+}
+
 function runOpencode(ws, session, message) {
   if (!OPENCODE) {
     safeSend(ws, { type: 'opencode_text', text: `(demo) OpenCode CLI not found on this host. Install it, then restart the server. You said: "${message.slice(0,200)}"` });
     safeSend(ws, { type: 'opencode_done' });
     return;
   }
+  session.queue.push(String(message));
+  if (session.busy) {
+    safeSend(ws, { type: 'opencode_event', text: 'queued' });
+  } else {
+    processQueue(ws, session);
+  }
+}
+
+function runOpencodeNow(ws, session, message) {
   const args = ['run', '--format', 'json', message];
+  if (session.model) args.push('--model', session.model);
   if (session.opencodeSession) args.push('--session', session.opencodeSession);
   console.log('[opencode]', args.join(' ').slice(0, 200));
   // stdin must be ignored — the CLI hangs when stdin is an open pipe
-  const child = spawn(OPENCODE, args, { cwd: session.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(OPENCODE, args, { cwd: PROJECT_ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
   let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGINT'); } catch {} }, 120 * 1000);
+  const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGINT'); } catch {} }, 5 * 60 * 1000);
   timer.unref && timer.unref();
   session.opencodeChild = child;
   let buf = '';
   let stderrBuf = '';
+  let gotText = false;
   child.stdout.on('data', (d) => {
     buf += d.toString();
     let idx;
@@ -151,38 +187,43 @@ function runOpencode(ws, session, message) {
       try {
         const ev = JSON.parse(line);
         if (ev.sessionID && !session.opencodeSession) session.opencodeSession = ev.sessionID;
-        if (ev.type === 'text' && ev.part && ev.part.text) safeSend(ws, { type: 'opencode_text', text: ev.part.text });
+        if (ev.sessionID) { /* keep session alive for follow-ups */ }
+        if (ev.type === 'text' && ev.part && ev.part.text) { gotText = true; safeSend(ws, { type: 'opencode_text', text: ev.part.text }); }
         else if (ev.type === 'step_finish' && ev.part && ev.part.cost) safeSend(ws, { type: 'opencode_meta', text: `cost ${ev.part.cost} · ${JSON.stringify(ev.part.tokens || {})}` });
         else if (ev.type) safeSend(ws, { type: 'opencode_event', text: ev.type });
-      } catch { if (line) safeSend(ws, { type: 'opencode_text', text: line }); }
+      } catch { gotText = true; if (line) safeSend(ws, { type: 'opencode_text', text: line }); }
     }
   });
   child.stderr.on('data', (d) => { stderrBuf += d.toString(); });
-  child.on('error', (err) => {
-    clearTimeout(timer);
-    safeSend(ws, { type: 'opencode_text', text: `OpenCode error: ${err.message}` });
-    safeSend(ws, { type: 'opencode_done' });
-  });
-  child.on('close', (code) => {
+  function finish(code) {
     clearTimeout(timer);
     session.opencodeChild = null;
-    if (buf.trim()) try { const ev = JSON.parse(buf.trim()); if (ev.part?.text) safeSend(ws, { type: 'opencode_text', text: ev.part.text }); } catch { safeSend(ws, { type: 'opencode_text', text: buf.trim() }); }
+    session.busy = false;
+    if (buf.trim() && !gotText) try { const ev = JSON.parse(buf.trim()); if (ev.part?.text) safeSend(ws, { type: 'opencode_text', text: ev.part.text }); } catch { safeSend(ws, { type: 'opencode_text', text: buf.trim() }); }
     if (timedOut) {
-      safeSend(ws, { type: 'opencode_text', text: '[opencode timed out after 120s — try a shorter prompt]' });
+      safeSend(ws, { type: 'opencode_text', text: '[opencode timed out after 5 min — try a shorter prompt]' });
     } else if (code !== 0) {
       const extra = stderrBuf.trim() ? `\n${stderrBuf.trim().slice(-500)}` : '';
       safeSend(ws, { type: 'opencode_text', text: `[opencode exit ${code}]${extra}` });
     }
     safeSend(ws, { type: 'opencode_done' });
+    safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session) });
+    processQueue(ws, session);
+  }
+  child.on('error', (err) => {
+    if (!session.busy) return;
+    safeSend(ws, { type: 'opencode_text', text: `OpenCode error: ${err.message}` });
+    finish(1);
   });
-  ws.on('close', () => { try { child.kill('SIGINT'); } catch {} });
+  child.on('close', (code) => { if (session.busy) finish(code); });
 }
 
 function handle(ws) {
-  const session = { cwd: root, opencodeSession: null, opencodeChild: null };
+  const session = { cwd: PROJECT_ROOT, opencodeSession: null, opencodeChild: null, model: null, queue: [], busy: false };
   const label = process.platform === 'darwin' ? 'Terminal (Mac)' : 'Terminal (Termux)';
   safeSend(ws, { type: 'terminal', text: `${label} · ${SHELL_BIN} · cwd ${session.cwd} · try "pwd", "ls", "opencode run \\"hi\\""` });
   safeSend(ws, { type: 'system', text: OPENCODE ? `OpenCode ready: ${OPENCODE}` : 'OpenCode CLI not found (demo mode)' });
+  safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session) });
 
   // heartbeat so idle proxies don't cut the socket
   ws.isAlive = true;
@@ -208,10 +249,24 @@ function handle(ws) {
       runOpencode(ws, session, String(data.text || ''));
     } else if (data.type === 'opencode_reset') {
       session.opencodeSession = null;
+      session.model = null;
+      session.queue = [];
       safeSend(ws, { type: 'system', text: 'OpenCode session reset' });
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session) });
+    } else if (data.type === 'opencode_models') {
+      listModels().then((models) => safeSend(ws, { type: 'opencode_models_list', models }));
+    } else if (data.type === 'opencode_set_model') {
+      session.model = data.model || null;
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session) });
+      safeSend(ws, { type: 'system', text: session.model ? `Model set to ${session.model}` : 'Model set to default' });
+    } else if (data.type === 'opencode_info') {
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session) });
     }
   });
-  ws.on('close', () => { if (session.opencodeChild) try { session.opencodeChild.kill('SIGINT'); } catch {} });
+  ws.on('close', () => {
+    session.queue = [];
+    if (session.opencodeChild) try { session.opencodeChild.kill('SIGINT'); } catch {}
+  });
 }
 const hb = setInterval(() => {
   [wss, server3000wss].forEach((s) => s.clients.forEach((ws) => {
