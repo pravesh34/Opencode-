@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/menu_back"
+        android:icon="@android:drawable/ic_menu_revert"
+        android:title="@string/menu_back" />
+    <item
+        android:id="@+id/menu_forward"
+        android:icon="@android:drawable/ic_menu_forward"
+        android:title="@string/menu_forward" />
+    <item
+        android:id="@+id/menu_reload"
+        android:icon="@android:drawable/ic_menu_rotate"
+        android:title="@string/menu_reload" />
+    <item
+        android:id="@+id/menu_home"
+        android:title="@string/menu_home" />
+    <item
+        android:id="@+id/menu_share"
+        android:title="@string/menu_share" />
+    <item
+        android:id="@+id/menu_copy_url"
+        android:title="@string/menu_copy_url" />
+    <item
+        android:id="@+id/menu_open_browser"
+        android:title="@string/menu_open_browser" />
+    <item
+        app:showAsAction="never"
+        android:id="@+id/menu_termux"
+        android:title="@string/menu_termux" />
+    <item
+        app:showAsAction="never"
+        android:id="@+id/menu_opencode"
+        android:title="@string/menu_opencode" />
+    <item
+        app:showAsAction="never"
+        android:id="@+id/menu_settings"
+        android:title="@string/menu_settings" />
+</menu>

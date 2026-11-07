@@ -3,6 +3,11 @@ name: Android APK
 on:
   push:
   workflow_dispatch:
+    inputs:
+      gateway_url:
+        description: 'GATEWAY_URL (optional override)'
+        required: false
+        type: string
 
 jobs:
   build:
@@ -14,9 +19,16 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-readonly: false
       - name: Build debug APK
         run: |
+          if [ -n "$GATEWAY" ]; then
+            echo "GATEWAY_URL=$GATEWAY" >> gradle.properties
+          fi
           if [ -f gradlew ]; then chmod +x gradlew && ./gradlew assembleDebug; else gradle assembleDebug; fi
+        env:
+          GATEWAY: ${{ inputs.gateway_url }}
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk

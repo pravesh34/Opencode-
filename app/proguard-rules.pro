@@ -1,1 +1,5 @@
-# Keep WebView JS interfaces if added later.
+# Keep WebView interfaces
+-keepclassmembers class * implements android.webkit.JavascriptInterface { *; }
+-keepclassmembers class * {
+    public void *(android.webkit.JavascriptInterface);
+}

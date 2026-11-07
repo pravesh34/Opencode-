@@ -9,3 +9,5 @@
 .cxx
 app/build/
 *.apk
+web/node_modules/
+web/package-lock.json

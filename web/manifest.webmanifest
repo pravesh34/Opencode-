@@ -1,0 +1,13 @@
+{
+  "name": "Open Gateway",
+  "short_name": "Gateway",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b141a",
+  "theme_color": "#00a884",
+  "description": "Open Gateway web UI for Android WebView wrapper and browser PWA",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

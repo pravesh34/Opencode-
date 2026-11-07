@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#00a884"/>
+<meta name="description" content="Open Gateway web UI — local demo PWA with Terminal (Mac + Termux) + OpenCode, also loaded by the Android WebView app"/>
+<title>Open Gateway</title>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<link rel="icon" href="/icon.svg"/>
+<link rel="stylesheet" href="/style.css"/>
+</head>
+<body>
+<header>
+  <div class="logo">OG</div>
+  <div><h1>Open Gateway</h1><div class="sub" id="gateway-label">Local demo · localhost:3000</div></div>
+  <div class="spacer"></div>
+  <span id="health" class="pill">…</span>
+  <button class="btn secondary" id="reload-btn" style="padding:8px 14px">Reload</button>
+</header>
+<nav class="tabs">
+  <button class="active" data-panel="panel-home">Home</button>
+  <button data-panel="panel-chat">Chat</button>
+  <button data-panel="panel-terminal">Terminal</button>
+  <button data-panel="panel-opencode">OpenCode</button>
+  <button data-panel="panel-settings">Settings</button>
+</nav>
+<main>
+  <section id="panel-home" class="panel active">
+    <div class="card">
+      <h2>Welcome to Open Gateway</h2>
+      <p>This is the local web app that the Android WebView wrapper loads. It includes a **real host shell** (Mac zsh / Termux bash — auto-detected) and **OpenCode** (`opencode run`) wired over the local WebSocket — not just a demo. Locally it runs on <code>localhost:3000</code> with a WebSocket gateway on <code>:8080/ws</code> (also proxied at <code>/ws</code> on :3000).</p>
+      <div class="grid">
+        <div class="card" style="margin:0"><div class="stat"><span id="health2">Online</span> <small>gateway</small></div><p>Health check from <code>/api/health</code></p></div>
+        <div class="card" style="margin:0"><div class="stat"><span id="ws-state">Connecting</span> <small>websocket</small></div><p>Chat & terminal messages</p></div>
+        <div class="card" style="margin:0"><div class="stat"><span id="shell-state">—</span> <small>host shell</small></div><p><span id="shell-sub">detecting…</span> · <button class="btn secondary" id="install-btn">Shell info</button></p></div>
+        <div class="card" style="margin:0"><div class="stat"><span id="opencode-state">—</span> <small>opencode</small></div><p id="opencode-sub">CLI status</p></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Quick actions</h2>
+      <div class="row">
+        <button class="btn" onclick="document.querySelector('[data-panel=panel-terminal]').click()">Open Terminal</button>
+        <button class="btn secondary" onclick="document.querySelector('[data-panel=panel-opencode]').click()">Open OpenCode</button>
+        <button class="btn secondary" onclick="document.querySelector('[data-panel=panel-chat]').click()">Open Chat</button>
+        <button class="btn secondary" onclick="document.querySelector('[data-panel=panel-settings]').click()">Settings</button>
+      </div>
+      <p style="color:var(--muted);font-size:13px">Terminal: the host's own shell (Mac: <code>zsh</code>, Termux: <code>bash</code>) — try <code>ls</code>, <code>pwd</code>, <code>cd web && ls</code>, <code>opencode run "hi"</code>. OpenCode: streaming assistant powered by the local <code>opencode</code> CLI.</p>
+    </div>
+    <div class="card">
+      <h2>For the Android app</h2>
+      <p>On an emulator, <code>10.0.2.2:3000</code> maps to this host's <code>localhost:3000</code>. On a physical device, use your LAN IP (e.g. <code>http://192.168.1.x:3000</code>) or a tunnel URL. The app has an in-app URL editor so you don't need to rebuild to change it.</p>
+    </div>
+  </section>
+
+  <section id="panel-chat" class="panel">
+    <div id="messages"></div>
+    <form class="composer" id="chat-form">
+      <button type="button" class="btn secondary" id="clear-chat" title="Clear">Clear</button>
+      <input id="chat-input" placeholder="Message the gateway…" autocomplete="off"/>
+      <button class="btn" type="submit">Send</button>
+    </form>
+  </section>
+
+  <section id="panel-terminal" class="panel">
+    <div class="terminal"><code id="term-out"></code></div>
+    <form class="tinput" id="term-form">
+      <input id="term-input" placeholder="Host shell (Mac + Termux) — try: ls, pwd, whoami, opencode run &quot;hi&quot;" autocomplete="off"/>
+      <button class="btn" type="submit">Run</button>
+    </form>
+    <p style="color:var(--muted);font-size:13px">The host's own shell (cwd tracked per session). <code>cd</code> persists within the session. Quick: <code>ls</code> · <code>pwd</code> · <code>whoami</code> · <code>date</code> · <code>clear</code> (client-side) · <code>opencode run "…"</code>.</p>
+  </section>
+
+  <section id="panel-opencode" class="panel">
+    <div class="card" style="margin-bottom:8px"><p style="margin:0;font-size:13px">Powered by local <code>opencode run</code> CLI. Session is kept so follow-ups continue the same conversation. Use <b>New session</b> to reset.</p></div>
+    <div id="opencode-messages"></div>
+    <form class="composer" id="opencode-form">
+      <button type="button" class="btn secondary" id="opencode-reset">New</button>
+      <input id="opencode-input" placeholder="Ask OpenCode…" autocomplete="off"/>
+      <button class="btn" type="submit">Send</button>
+    </form>
+  </section>
+
+  <section id="panel-settings" class="panel">
+    <div class="card">
+      <h2>Gateway settings</h2>
+      <label>Gateway URL (web)</label>
+      <input id="gateway-url" placeholder="https://your-tunnel.trycloudflare.com"/>
+      <label>WebSocket URL</label>
+      <input id="ws-url" placeholder="ws://localhost:8080/ws or /ws on same host"/>
+      <div class="row">
+        <button class="btn" id="save-settings">Save & reconnect</button>
+        <button class="btn secondary" id="reload2" onclick="location.reload()">Reload page</button>
+      </div>
+      <p>Saved in <code>localStorage</code>. The Android app keeps its own copy in <code>SharedPreferences</code>.</p>
+    </div>
+  </section>
+</main>
+<footer class="footer"><span>Open Gateway · Terminal (Mac + Termux) + OpenCode · local demo PWA</span><span>Web :3000 · WS :8080/ws (also :3000/ws)</span></footer>
+<div class="toast" id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>

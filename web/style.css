@@ -1,0 +1,43 @@
+:root{--bg:#0b141a;--panel:#111b21;--panel2:#1f2c34;--text:#e9edef;--muted:#8696a0;--accent:#00a884;--accent2:#25d366;--border:#222d34;--radius:14px}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+header .logo{width:32px;height:32px;border-radius:10px;background:var(--accent);display:grid;place-items:center;font-weight:800;color:#0b141a}
+header h1{font-size:15px;margin:0;font-weight:650}
+header .sub{font-size:12px;color:var(--muted)}
+header .spacer{flex:1}
+.pill{font-size:12px;padding:5px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--border)}
+.pill.ok{color:var(--accent2);border-color:#1f4d3a}
+.pill.bad{color:#f15c6d;border-color:#5c2a30}
+nav.tabs{display:flex;gap:6px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);overflow-x:auto}
+nav.tabs button{background:transparent;border:1px solid transparent;color:var(--muted);border-radius:999px;padding:8px 14px;font-size:14px;cursor:pointer;white-space:nowrap}
+nav.tabs button.active{background:var(--panel2);color:var(--text);border-color:var(--border)}
+main{flex:1;overflow:auto;padding:14px;max-width:900px;width:100%;margin:0 auto}
+.panel{display:none}.panel.active{display:block}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+.card h2{margin:0 0 8px;font-size:15px}
+.card p{color:var(--muted);font-size:13px;line-height:1.5;margin:6px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:640px){.grid{grid-template-columns:1fr}}
+.stat{font-size:22px;font-weight:700}.stat small{font-size:12px;color:var(--muted);font-weight:400}
+#messages{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;min-height:200px}
+.msg{max-width:85%;padding:10px 12px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.msg.user{align-self:flex-end;background:#005c4b;color:#fff}
+.msg.assistant{align-self:flex-start;background:var(--panel2);color:var(--text)}
+.msg.system{align-self:center;background:transparent;color:var(--muted);font-size:12px;text-align:center}
+.composer{display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding:8px 0}
+.composer input{flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:12px 16px;font-size:15px;outline:none}
+.composer input:focus{border-color:var(--accent)}
+.btn{background:var(--accent);color:#0b141a;border:0;border-radius:999px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer}
+.btn.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+.terminal{background:#000;color:#d1d7db;border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:13px;min-height:260px;white-space:pre-wrap;word-break:break-word}
+.terminal .dim{color:#8696a0}
+.tinput{display:flex;gap:8px;margin-top:10px}
+.tinput input{flex:1;background:#000;color:#d1d7db;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace}
+label{font-size:13px;color:var(--muted);display:block;margin:12px 0 6px}
+input,select{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 12px;font-size:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#182229;border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20}
+.toast.show{opacity:1}
+.footer{padding:10px 14px;border-top:1px solid var(--border);color:var(--muted);font-size:12px;background:var(--panel);display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}
+a{color:var(--accent2)}
