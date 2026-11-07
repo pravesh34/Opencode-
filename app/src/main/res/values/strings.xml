@@ -2,9 +2,9 @@
     <string name="app_name">Open Gateway</string>
     <string name="settings_title">Gateway URL</string>
     <string name="enter_url">Enter a gateway URL</string>
-    <string name="save_reload">Save & reload</string>
+    <string name="save_reload">Save &amp; reload</string>
     <string name="saved">Saved</string>
-    <string name="cache_cleared">Cache & cookies cleared</string>
+    <string name="cache_cleared">Cache &amp; cookies cleared</string>
     <string name="clear_cache">Clear cache</string>
     <string name="retry">Retry</string>
     <string name="error_title">Can\'t reach the gateway</string>
