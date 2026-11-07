@@ -4,110 +4,167 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#00a884"/>
-<meta name="description" content="Open Gateway web UI — local demo PWA with Terminal (Mac + Termux) + OpenCode, also loaded by the Android WebView app"/>
+<meta name="description" content="Open Gateway — Telegram-style projects with Terminal (Mac + Termux) + OpenCode"/>
 <title>Open Gateway</title>
 <link rel="manifest" href="/manifest.webmanifest"/>
 <link rel="icon" href="/icon.svg"/>
 <link rel="stylesheet" href="/style.css"/>
 </head>
 <body>
-<header>
-  <div class="logo">OG</div>
-  <div><h1>Open Gateway</h1><div class="sub" id="gateway-label">Local demo · localhost:3000</div></div>
-  <div class="spacer"></div>
-  <span id="health" class="pill">…</span>
-  <button class="btn secondary" id="reload-btn" style="padding:8px 14px">Reload</button>
-</header>
-<nav class="tabs">
-  <button class="active" data-panel="panel-home">Home</button>
-  <button data-panel="panel-chat">Chat</button>
-  <button data-panel="panel-terminal">Terminal</button>
-  <button data-panel="panel-opencode">OpenCode</button>
-  <button data-panel="panel-settings">Settings</button>
-</nav>
-<main>
-  <section id="panel-home" class="panel active">
-    <div class="card">
-      <h2>Welcome to Open Gateway</h2>
-      <p>This is the local web app that the Android WebView wrapper loads. It includes a **real host shell** (Mac zsh / Termux bash — auto-detected) and **OpenCode** (`opencode run`) wired over the local WebSocket — not just a demo. Locally it runs on <code>localhost:3000</code> with a WebSocket gateway on <code>:8080/ws</code> (also proxied at <code>/ws</code> on :3000).</p>
-      <div class="grid">
-        <div class="card" style="margin:0"><div class="stat"><span id="health2">Online</span> <small>gateway</small></div><p>Health check from <code>/api/health</code></p></div>
-        <div class="card" style="margin:0"><div class="stat"><span id="ws-state">Connecting</span> <small>websocket</small></div><p>Chat & terminal messages</p></div>
-        <div class="card" style="margin:0"><div class="stat"><span id="shell-state">—</span> <small>host shell</small></div><p><span id="shell-sub">detecting…</span> · <button class="btn secondary" id="install-btn">Shell info</button></p></div>
-        <div class="card" style="margin:0"><div class="stat"><span id="opencode-state">—</span> <small>opencode</small></div><p id="opencode-sub">CLI status</p></div>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-head">
+      <div class="logo avatar" style="width:36px;height:36px;border-radius:10px;background:var(--accent);color:#0b141a;font-size:14px">OG</div>
+      <h1>Projects</h1>
+      <div class="spacer"></div>
+      <span id="health" class="pill">…</span>
+      <button class="icon-btn" id="new-project-btn" title="New project">＋</button>
+    </div>
+    <div class="search"><input id="project-search" placeholder="Search projects…" autocomplete="off"/></div>
+    <div class="project-list" id="project-list"></div>
+    <div class="side-foot">
+      <button class="nav-btn" id="nav-terminal" data-view="terminal">Terminal</button>
+      <button class="nav-btn" id="nav-settings" data-view="settings">Settings</button>
+    </div>
+  </aside>
+
+  <section class="main" id="main">
+    <!-- Project chat view -->
+    <div id="view-chat" class="content" style="display:none;flex-direction:column">
+      <div class="chat-head">
+        <button class="icon-btn back" id="back-btn" title="Back">←</button>
+        <div class="avatar" id="chat-avatar" style="width:40px;height:40px;font-size:16px">P</div>
+        <div class="title-wrap">
+          <div class="title" id="chat-title">Project</div>
+          <div class="subtitle" id="chat-subtitle">cwd · model</div>
+        </div>
+        <span id="ws-state" class="pill">…</span>
+        <button class="icon-btn" id="project-settings-btn" title="Project settings">⚙</button>
+      </div>
+      <div id="project-messages"></div>
+      <form class="composer" id="opencode-form">
+        <button type="button" class="btn secondary" id="opencode-reset" title="New session">New</button>
+        <input id="opencode-input" placeholder="Message OpenCode…" autocomplete="off"/>
+        <button class="btn" type="submit">Send</button>
+      </form>
+    </div>
+
+    <!-- Terminal view -->
+    <div id="view-terminal" class="content" style="display:none;flex-direction:column">
+      <div class="chat-head">
+        <button class="icon-btn back" id="back-term" title="Back">←</button>
+        <div class="avatar" style="width:40px;height:40px;font-size:16px;background:#333">⌘</div>
+        <div class="title-wrap">
+          <div class="title">Terminal</div>
+          <div class="subtitle" id="term-subtitle">Host shell · cwd tracked</div>
+        </div>
+        <span id="ws-state-term" class="pill">…</span>
+      </div>
+      <div class="terminal-wrap">
+        <div class="terminal"><code id="term-out"></code></div>
+        <form class="tinput" id="term-form">
+          <input id="term-input" placeholder="Try: pwd, ls, whoami, cd, opencode run &quot;hi&quot;" autocomplete="off"/>
+          <button class="btn" type="submit">Run</button>
+        </form>
+        <p class="muted small" style="margin:0">Real host shell (Mac zsh / Termux bash). <code>cd</code> persists per session.</p>
       </div>
     </div>
-    <div class="card">
-      <h2>Quick actions</h2>
-      <div class="row">
-        <button class="btn" onclick="document.querySelector('[data-panel=panel-terminal]').click()">Open Terminal</button>
-        <button class="btn secondary" onclick="document.querySelector('[data-panel=panel-opencode]').click()">Open OpenCode</button>
-        <button class="btn secondary" onclick="document.querySelector('[data-panel=panel-chat]').click()">Open Chat</button>
-        <button class="btn secondary" onclick="document.querySelector('[data-panel=panel-settings]').click()">Settings</button>
+
+    <!-- Settings view -->
+    <div id="view-settings" class="content" style="display:none;flex-direction:column">
+      <div class="chat-head">
+        <button class="icon-btn back" id="back-settings" title="Back">←</button>
+        <div class="avatar" style="width:40px;height:40px;font-size:16px;background:#333">⚙</div>
+        <div class="title-wrap">
+          <div class="title">Settings</div>
+          <div class="subtitle">Gateway & app</div>
+        </div>
       </div>
-      <p style="color:var(--muted);font-size:13px">Terminal: the host's own shell (Mac: <code>zsh</code>, Termux: <code>bash</code>) — try <code>ls</code>, <code>pwd</code>, <code>cd web && ls</code>, <code>opencode run "hi"</code>. OpenCode: streaming assistant powered by the local <code>opencode</code> CLI.</p>
+      <div class="settings-wrap">
+        <div class="card">
+          <h2>Gateway connection</h2>
+          <label>Gateway URL (web)</label>
+          <input id="gateway-url" placeholder="http://localhost:3000"/>
+          <label>WebSocket URL</label>
+          <input id="ws-url" placeholder="ws://localhost:3000/ws"/>
+          <div class="row">
+            <button class="btn" id="save-settings">Save & reconnect</button>
+            <button class="btn secondary" id="reload-app">Reload app</button>
+          </div>
+          <p>Saved in <code>localStorage</code>. The Android app keeps its own copy in <code>SharedPreferences</code>.</p>
+        </div>
+        <div class="card">
+          <h2>Status</h2>
+          <div class="grid2">
+            <div><div class="small muted">Gateway</div><div id="health2">—</div></div>
+            <div><div class="small muted">WebSocket</div><div id="ws-state-settings">—</div></div>
+            <div><div class="small muted">Host shell</div><div id="shell-state">—</div> <span class="small muted" id="shell-sub"></span></div>
+            <div><div class="small muted">OpenCode</div><div id="opencode-state">—</div> <span class="small muted" id="opencode-sub"></span></div>
+          </div>
+          <p class="small muted" style="margin-top:10px">Server time: <span id="uptime">—</span></p>
+        </div>
+      </div>
     </div>
-    <div class="card">
-      <h2>For the Android app</h2>
-      <p>On an emulator, <code>10.0.2.2:3000</code> maps to this host's <code>localhost:3000</code>. On a physical device, use your LAN IP (e.g. <code>http://192.168.1.x:3000</code>) or a tunnel URL. The app has an in-app URL editor so you don't need to rebuild to change it.</p>
+
+    <!-- Empty state (desktop, no selection) -->
+    <div id="view-empty" class="content">
+      <div class="chat-head">
+        <button class="icon-btn back" id="back-empty" title="Back">←</button>
+        <div class="title-wrap"><div class="title">Open Gateway</div><div class="subtitle">Select a project to start</div></div>
+      </div>
+      <div class="empty-state">
+        <div>
+          <div class="avatar" style="width:72px;height:72px;font-size:28px;margin:0 auto 12px;background:var(--accent);color:#0b141a">OG</div>
+          <h2>Open Gateway</h2>
+          <p class="muted">Projects are like contacts — each has its own folder, model, and OpenCode session.<br/>Create a project or pick one from the list.</p>
+          <div class="row" style="justify-content:center"><button class="btn" id="empty-new-project">New project</button></div>
+        </div>
+      </div>
     </div>
   </section>
+</div>
 
-  <section id="panel-chat" class="panel">
-    <div id="messages"></div>
-    <form class="composer" id="chat-form">
-      <button type="button" class="btn secondary" id="clear-chat" title="Clear">Clear</button>
-      <input id="chat-input" placeholder="Message the gateway…" autocomplete="off"/>
-      <button class="btn" type="submit">Send</button>
-    </form>
-  </section>
+<!-- Project customization modal -->
+<div class="modal-back" id="project-modal-back">
+  <div class="modal" id="project-modal">
+    <h2><span id="modal-avatar" class="avatar" style="width:36px;height:36px;font-size:14px">P</span> <span id="modal-heading">Project settings</span></h2>
+    <p class="hint">Customize this project (contact) — its folder, model, and session.</p>
 
-  <section id="panel-terminal" class="panel">
-    <div class="terminal"><code id="term-out"></code></div>
-    <form class="tinput" id="term-form">
-      <input id="term-input" placeholder="Host shell (Mac + Termux) — try: ls, pwd, whoami, opencode run &quot;hi&quot;" autocomplete="off"/>
-      <button class="btn" type="submit">Run</button>
-    </form>
-    <p style="color:var(--muted);font-size:13px">The host's own shell (cwd tracked per session). <code>cd</code> persists within the session. Quick: <code>ls</code> · <code>pwd</code> · <code>whoami</code> · <code>date</code> · <code>clear</code> (client-side) · <code>opencode run "…"</code>.</p>
-  </section>
+    <label>Name</label>
+    <input id="proj-name" placeholder="My project"/>
 
-  <section id="panel-opencode" class="panel">
-    <div class="card" style="margin-bottom:8px">
-      <p style="margin:0 0 8px;font-size:13px">Powered by local <code>opencode run</code> CLI. The session stays alive across messages (same conversation), and it works in the current project. Use <b>New session</b> to start fresh.</p>
+    <label>Icon (emoji) & color</label>
+    <div class="icon-pick">
+      <div class="avatar" id="proj-avatar-preview">P</div>
+      <input id="proj-icon" placeholder="Emoji, e.g. 🚀 (optional)" maxlength="4"/>
+    </div>
+    <div class="swatches" id="proj-swatches"></div>
+
+    <label>Working directory (cwd)</label>
+    <input id="proj-cwd" placeholder="/path/to/project"/>
+    <p class="small muted" style="margin:4px 0 0">OpenCode and the terminal run in this folder for this project.</p>
+
+    <label>Model</label>
+    <select id="opencode-model"><option value="">Default (auto)</option></select>
+    <p class="small muted" style="margin:4px 0 0">Applies to this project's OpenCode session.</p>
+
+    <label>Session</label>
+    <div class="kv" id="proj-session-id">new session</div>
+    <div class="row">
+      <button class="btn secondary" id="proj-new-session" type="button">New session</button>
+      <button class="btn secondary" id="proj-reset-session" type="button">Reset session</button>
+    </div>
+
+    <div class="row" style="margin-top:18px;justify-content:space-between">
+      <button class="btn danger" id="proj-delete" type="button">Delete project</button>
       <div class="row" style="margin-top:0">
-        <span class="pill" id="opencode-session">session: —</span>
-        <span class="pill" id="opencode-model-label">model: default</span>
+        <button class="btn secondary" id="proj-cancel" type="button">Cancel</button>
+        <button class="btn" id="proj-save" type="button">Save</button>
       </div>
-      <label>Model</label>
-      <select id="opencode-model">
-        <option value="">Default (auto)</option>
-      </select>
-      <p style="color:var(--muted);font-size:12px;margin:6px 0 0">Working in: <code id="opencode-cwd">—</code> · choose a model — it applies to the whole session.</p>
     </div>
-    <div id="opencode-messages"></div>
-    <form class="composer" id="opencode-form">
-      <button type="button" class="btn secondary" id="opencode-reset">New</button>
-      <input id="opencode-input" placeholder="Ask OpenCode…" autocomplete="off"/>
-      <button class="btn" type="submit">Send</button>
-    </form>
-  </section>
+  </div>
+</div>
 
-  <section id="panel-settings" class="panel">
-    <div class="card">
-      <h2>Gateway settings</h2>
-      <label>Gateway URL (web)</label>
-      <input id="gateway-url" placeholder="https://your-tunnel.trycloudflare.com"/>
-      <label>WebSocket URL</label>
-      <input id="ws-url" placeholder="ws://localhost:8080/ws or /ws on same host"/>
-      <div class="row">
-        <button class="btn" id="save-settings">Save & reconnect</button>
-        <button class="btn secondary" id="reload2" onclick="location.reload()">Reload page</button>
-      </div>
-      <p>Saved in <code>localStorage</code>. The Android app keeps its own copy in <code>SharedPreferences</code>.</p>
-    </div>
-  </section>
-</main>
-<footer class="footer"><span>Open Gateway · Terminal (Mac + Termux) + OpenCode · local demo PWA</span><span>Web :3000 · WS :8080/ws (also :3000/ws)</span></footer>
 <div class="toast" id="toast"></div>
 <script src="/app.js"></script>
 </body>
