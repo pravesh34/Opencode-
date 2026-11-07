@@ -64,11 +64,6 @@ class OpenCodeRunner(private val ctx: Context) {
       return@flow
     }
     val workspace = AssetInstaller.workspaceDir(ctx).apply { mkdirs() }
-    // Ensure opencode.json carries plan|build + thinking before exec
-    try {
-      val repo = SettingsRepository(ctx)
-      val provider = runCatching { kotlinx.coroutines.flow.first(repo.permission()) }.getOrNull() ?: "plan"
-    } catch (_: Exception) {}
     val args = mutableListOf("run", "--format", "json", message)
     if (!model.isNullOrBlank()) args.addAll(listOf("--model", model))
     if (!sessionId.isNullOrBlank()) args.addAll(listOf("--session", sessionId))
@@ -98,7 +93,14 @@ class OpenCodeRunner(private val ctx: Context) {
             val part = obj.optJSONObject("part")
             val text = part?.optString("text", "")
             if (!text.isNullOrBlank()) emit(text)
-            // ignore metadata events (step_finish etc) silently
+            // Phase 4: cost + tool call events (displayed inline as [cost]/[tool])
+            val cost = part?.optDouble("cost", Double.NaN)
+            if (!cost.isNaN()) emit("[cost $cost]")
+            val type = obj.optString("type", "")
+            if (type.contains("tool", ignoreCase = true)) {
+              val tool = part?.optString("tool", type)
+              emit("[tool $tool]")
+            }
           } catch (_: Exception) {
             emit(line)
           }

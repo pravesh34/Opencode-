@@ -8,22 +8,31 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.opengateway.app.OpenCodeRunner
 import com.opengateway.app.OpenCodeRunnerViewModel
+import com.opengateway.app.SessionManager
 import com.opengateway.app.SettingsRepository
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(runner: OpenCodeRunner) {
   val ctx = LocalContext.current
@@ -31,13 +40,31 @@ fun ChatScreen(runner: OpenCodeRunner) {
   val msgs by vm.messages.collectAsState()
   val busy by vm.busy.collectAsState()
   var input by remember { mutableStateOf("") }
+  var session by remember { mutableStateOf(SessionManager.list(ctx).firstOrNull() ?: SessionManager.newSession(ctx)) }
+  var expanded by remember { mutableStateOf(false) }
+  val scope = rememberCoroutineScope()
+
   Column(Modifier.fillMaxSize().padding(12.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      ExposedDropdownMenuBox(expanded, { expanded = !expanded }) {
+        OutlinedTextField(session, {}, Modifier.weight(1f).menuAnchor(), label = { Text("Session") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) })
+        ExposedDropdownMenu(expanded, { expanded = false }) {
+          (SessionManager.list(ctx) + "+ New").forEach { s ->
+            DropdownMenuItem({ Text(s) }, {
+              session = if (s == "+ New") SessionManager.newSession(ctx) else s
+              expanded = false
+            })
+          }
+        }
+      }
+      AssistChip(onClick = {}, label = { Text("Plan|Build in Settings") })
+    }
     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       items(msgs) { Text(it) }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       TextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text("Message opencode…") })
-      Button(onClick = { if (input.isNotBlank() && !busy) { vm.send(input.trim()); input = "" } }, enabled = !busy) { Text(if (busy) "…" else "Send") }
+      Button(onClick = { if (input.isNotBlank() && !busy) { SessionManager.append(ctx, session, "You: ${input.trim()}"); vm.send(input.trim()); input = "" } }, enabled = !busy) { Text(if (busy) "…" else "Send") }
     }
   }
 }
