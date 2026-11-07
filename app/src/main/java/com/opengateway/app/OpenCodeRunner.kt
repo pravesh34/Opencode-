@@ -56,11 +56,11 @@ class OpenCodeRunner(private val ctx: Context) {
   fun runPrompt(message: String, model: String?, sessionId: String?, permission: String? = "plan", env: Map<String, String> = emptyMap()): Flow<String> = flow {
     val binFile = AssetInstaller.opencodeBin(ctx)
     if (!binFile.exists()) {
-      emit("[error] opencode binary missing at ${binFile.absolutePath}. Reinstall app.")
+      emit("[error] opencode binary missing at ${binFile.absolutePath}. Settings -> Reinstall embedded binaries.")
       return@flow
     }
     if (!binFile.canExecute()) {
-      emit("[error] opencode binary not executable: ${binFile.absolutePath}. Try reinstall.")
+      emit("[error] opencode binary not executable: ${binFile.absolutePath}. Settings -> Reinstall embedded binaries.")
       return@flow
     }
     val workspace = AssetInstaller.workspaceDir(ctx).apply { mkdirs() }
@@ -79,7 +79,7 @@ class OpenCodeRunner(private val ctx: Context) {
       for ((k, v) in env) if (v.isNotBlank()) pb.environment()[k] = v
       proc = pb.start()
     } catch (e: Exception) {
-      emit("[error] failed to start opencode: ${e.message}\nTry: Settings -> reinstall, or check logcat. (${binFile.absolutePath})")
+      emit("[error] failed to start opencode: ${e.message}\nSee Settings -> Diagnostics -> Run self-test, or adb logcat -s OpenCodeRunner.")
       return@flow
     }
     ProcessHelper.watchdog(proc, 10 * 60 * 1000L)
@@ -109,7 +109,7 @@ class OpenCodeRunner(private val ctx: Context) {
         }
       }
       val code = proc.waitFor()
-      if (code != 0) emit("\n[opencode exited $code - check Settings -> provider/key, or terminal for details]")
+      if (code != 0) emit("\n[opencode exited $code - check Settings -> Diagnostics -> Run self-test, or Settings -> provider/key]")
     } catch (e: Exception) {
       try { proc.destroyForcibly() } catch (_: Exception) {}
       emit("[error] opencode stream failed: ${e.message}")
@@ -117,6 +117,32 @@ class OpenCodeRunner(private val ctx: Context) {
   }.flowOn(Dispatchers.IO).catch { e ->
     emit("[error] ${e.message}")
     Log.w("OpenCodeRunner", "flow crash avoided", e)
+  }
+
+  /** One-shot diagnostic for Settings -> Diagnostics (no adb needed). */
+  fun selfTest(): String {
+    val sb = StringBuilder()
+    sb.append(AssetInstaller.diagnostics(ctx)).append("\n")
+    val bin = AssetInstaller.opencodeBin(ctx)
+    if (!bin.exists()) {
+      sb.append("opencode --version: binary missing\n")
+      return sb.toString()
+    }
+    return try {
+      val proc = ProcessBuilder(bin.absolutePath, "--version")
+        .directory(AssetInstaller.workspaceDir(ctx))
+        .redirectErrorStream(true)
+        .start()
+      val out = proc.inputStream.bufferedReader().readText()
+      val code = proc.waitFor()
+      sb.append("opencode --version exit=").append(code).append("\n")
+      sb.append(out)
+      if (out.isBlank()) sb.append("(no output)\n")
+      sb.toString()
+    } catch (e: Exception) {
+      sb.append("opencode --version FAILED to start: ").append(e).append("\n")
+      sb.toString()
+    }
   }
 }
 

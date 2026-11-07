@@ -15,22 +15,59 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Fetch opencode + busybox (arm64, pinned)
+      - name: Install patchelf
+        run: sudo apt-get update && sudo apt-get install -y patchelf
+
+      - name: Fetch opencode + busybox + musl runtime (arm64, pinned)
         run: |
           set -e
           OPENCODE_VERSION="1.19.5"
-          mkdir -p app/src/main/assets/bin/arm64-v8a
-          # opencode: sst/opencode mirrored at anomalyco/opencode; tar contains single `opencode` binary (musl = runs on Android)
+          MUSL_VER="1.2.5-r4"
+          LLVMLIBS_VER="13.2.1_git20240309-r1"
+          ALPINE="v3.20"
+          BIN_DIR=app/src/main/assets/bin/arm64-v8a
+          # Absolute runtime path of filesDir/bin inside the installed app.
+          # Must match AssetInstaller (applicationId com.opengateway.app).
+          RUN_BIN="/data/data/com.opengateway.app/files/bin"
+          mkdir -p "$BIN_DIR"
+
+          # --- opencode (ET_EXEC musl build: cannot exec on Android as-is; we patch PT_INTERP) ---
+          echo "== opencode $OPENCODE_VERSION"
           curl -fL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-arm64-musl.tar.gz" -o /tmp/opencode.tar.gz
           tar xzf /tmp/opencode.tar.gz -C /tmp
-          cp /tmp/opencode app/src/main/assets/bin/arm64-v8a/opencode
-          chmod +x app/src/main/assets/bin/arm64-v8a/opencode
-          # Tier 1 busybox: Alpine aarch64 static (musl) - apk = tar with data.tar.gz -> bin/busybox
-          curl -fL "https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/busybox-static-1.36.1-r31.apk" -o /tmp/busybox.apk
-          mkdir -p /tmp/bb && tar xzf /tmp/busybox.apk -C /tmp/bb
-          cp /tmp/bb/bin/busybox.static app/src/main/assets/bin/arm64-v8a/busybox
-          chmod +x app/src/main/assets/bin/arm64-v8a/busybox
-          ls -lh app/src/main/assets/bin/arm64-v8a/
+
+          # --- Alpine aarch64 runtime packages (apk = tar) ---
+          echo "== musl $MUSL_VER"
+          curl -fL "https://dl-cdn.alpinelinux.org/alpine/${ALPINE}/main/aarch64/musl-${MUSL_VER}.apk" -o /tmp/musl.apk
+          mkdir -p /tmp/musl && tar xzf /tmp/musl.apk -C /tmp/musl || true
+          cp /tmp/musl/lib/ld-musl-aarch64.so.1  "$BIN_DIR/ld-musl-aarch64.so.1"
+          cp /tmp/musl/lib/libc.musl-aarch64.so.1 "$BIN_DIR/libc.musl-aarch64.so.1"
+
+          echo "== libstdc++ $LLVMLIBS_VER"
+          curl -fL "https://dl-cdn.alpinelinux.org/alpine/${ALPINE}/main/aarch64/libstdc++-${LLVMLIBS_VER}.apk" -o /tmp/libstdcxx.apk
+          mkdir -p /tmp/libstdcxx && tar xzf /tmp/libstdcxx.apk -C /tmp/libstdcxx || true
+          cp /tmp/libstdcxx/usr/lib/libstdc++.so.6.0.32 "$BIN_DIR/libstdc++.so.6"
+
+          echo "== libgcc $LLVMLIBS_VER"
+          curl -fL "https://dl-cdn.alpinelinux.org/alpine/${ALPINE}/main/aarch64/libgcc-${LLVMLIBS_VER}.apk" -o /tmp/libgcc.apk
+          mkdir -p /tmp/libgcc && tar xzf /tmp/libgcc.apk -C /tmp/libgcc || true
+          cp /tmp/libgcc/usr/lib/libgcc_s.so.1 "$BIN_DIR/libgcc_s.so.1"
+
+          echo "== busybox (Alpine ET_DYN build, musl-backed)"
+          curl -fL "https://dl-cdn.alpinelinux.org/alpine/${ALPINE}/main/aarch64/busybox-1.36.1-r31.apk" -o /tmp/busybox.apk
+          mkdir -p /tmp/bb && tar xzf /tmp/busybox.apk -C /tmp/bb || true
+          cp /tmp/bb/bin/busybox "$BIN_DIR/busybox"
+
+          # --- Re-point PT_INTERP + RPATH to the app's private bin dir ---
+          cp /tmp/opencode "$BIN_DIR/opencode"
+          patchelf --set-interpreter "$RUN_BIN/ld-musl-aarch64.so.1" --set-rpath '$ORIGIN' "$BIN_DIR/opencode"
+          patchelf --set-interpreter "$RUN_BIN/ld-musl-aarch64.so.1" --set-rpath '$ORIGIN' "$BIN_DIR/busybox"
+
+          chmod 755 "$BIN_DIR"/*
+          file "$BIN_DIR"/* || true
+          patchelf --print-interpreter "$BIN_DIR/opencode"
+          patchelf --print-interpreter "$BIN_DIR/busybox"
+          ls -lh "$BIN_DIR"
 
       - name: Build debug APK + release AAB
         run: |
@@ -48,7 +85,7 @@ jobs:
           path: app/build/outputs/bundle/release/*.aab
           retention-days: 90
 
-      - name: Publish AAB on tag
+      - name: Publish on tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:

@@ -33,12 +33,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.selection.SelectionContainer
+import com.opengateway.app.AssetInstaller
 import com.opengateway.app.ModelCatalog
 import com.opengateway.app.ModelFetcher
+import com.opengateway.app.OpenCodeRunner
 import com.opengateway.app.Provider
 import com.opengateway.app.ProviderConfig
 import com.opengateway.app.SettingsRepository
 import com.opengateway.app.GitHubAuth
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -175,6 +179,21 @@ fun SettingsScreen() {
         }
       }) { Text("All-files settings") }
     }
+    Divider()
+    Text("Diagnostics")
+    var diagBusy by remember { mutableStateOf(false) }
+    var diagResult by remember { mutableStateOf("") }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(onClick = {
+        diagBusy = true
+        scope.launch(Dispatchers.IO) { diagResult = OpenCodeRunner(ctx).selfTest(); diagBusy = false }
+      }, enabled = !diagBusy) { Text(if (diagBusy) "Testing…" else "Run self-test") }
+      Button(onClick = {
+        diagBusy = true
+        scope.launch(Dispatchers.IO) { diagResult = AssetInstaller.forceReinstall(ctx); diagBusy = false }
+      }, enabled = !diagBusy) { Text("Reinstall binaries") }
+    }
+    if (diagResult.isNotBlank()) SelectionContainer { Text(diagResult) }
     Divider()
     Text("OpenCode binary + busybox bundled (assets/bin/arm64-v8a). No Termux required. Provider/model/permission written to workspace/opencode.json and passed as --model at runtime. Git via busybox applet (ls/git/log/status).")
   }
