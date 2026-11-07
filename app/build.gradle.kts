@@ -48,4 +48,7 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    // Termux terminal emulation (native terminal view) - option 3 embed
+    implementation("com.github.termux.termux-app:terminal-view:v0.118.3")
+    implementation("com.github.termux.termux-app:terminal-emulator:v0.118.3")
 }

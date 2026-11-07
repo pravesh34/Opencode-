@@ -366,6 +366,8 @@ class MainActivity : AppCompatActivity() {
             R.id.menu_share -> { shareCurrent(); true }
             R.id.menu_copy_url -> { copyUrl(webView.url ?: currentUrl); true }
             R.id.menu_open_browser -> { openInBrowser(webView.url ?: currentUrl); true }
+            R.id.menu_native_terminal -> { startActivity(Intent(this, NativeTerminalActivity::class.java)); true }
+            R.id.menu_opencode_setup -> { startActivity(Intent(this, OpenCodeSetupActivity::class.java)); true }
             R.id.menu_termux -> { openTermuxApp(); true }
             R.id.menu_opencode -> { openOpencodeTab(); true }
             R.id.menu_settings -> { showSettingsDialog(); true }

@@ -32,7 +32,11 @@
     <string name="menu_copy_url">Copy link</string>
     <string name="menu_open_browser">Open in browser</string>
     <string name="menu_settings">Settings</string>
+    <string name="menu_native_terminal">Native terminal (in-app)</string>
+    <string name="menu_opencode_setup">OpenCode setup</string>
     <string name="menu_termux">Terminal (Termux app)</string>
     <string name="menu_opencode">Open OpenCode tab</string>
     <string name="termux_missing">Termux app not installed — opened Terminal tab instead</string>
+    <string name="opencode_setup_title">OpenCode setup (Android)</string>
+    <string name="opencode_setup_body">This app embeds a native terminal (Termux terminal libraries) and connects to OpenCode via the local gateway.\n\nFor a full on-device environment: install Termux, run the gateway server, and install/configure OpenCode. Use 127.0.0.1:3000 as the Gateway URL when running locally on this device.</string>
 </resources>

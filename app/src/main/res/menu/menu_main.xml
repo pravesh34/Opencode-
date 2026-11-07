@@ -27,6 +27,14 @@
         android:title="@string/menu_open_browser" />
     <item
         app:showAsAction="never"
+        android:id="@+id/menu_native_terminal"
+        android:title="@string/menu_native_terminal" />
+    <item
+        app:showAsAction="never"
+        android:id="@+id/menu_opencode_setup"
+        android:title="@string/menu_opencode_setup" />
+    <item
+        app:showAsAction="never"
         android:id="@+id/menu_termux"
         android:title="@string/menu_termux" />
     <item
