@@ -135,6 +135,11 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val savedUrl = prefs.getString(KEY_URL, null)
         currentUrl = (savedUrl?.takeIf { it.isNotBlank() } ?: BuildConfig.GATEWAY_URL).trim()
+        // First launch: persist the zero-config default (127.0.0.1) so the
+        // user never has to set a Gateway URL manually.
+        if (savedUrl.isNullOrBlank()) {
+            prefs.edit().putString(KEY_URL, currentUrl).apply()
+        }
 
         CookieManager.getInstance().apply {
             setAcceptCookie(true)

@@ -64,7 +64,14 @@ class GatewayService : Service() {
                 return
             }
             if (node == null) {
-                updateNotification("Node not found — install Termux & run installer")
+                // Node not on-device yet: try firing the one-line installer into
+                // Termux automatically so "just launch the app" works. If Termux
+                // disallows external commands, fall back to a clear notification.
+                updateNotification("Setting up gateway via Termux…")
+                val fired = tryTermuxInstaller()
+                if (!fired) {
+                    updateNotification("Node not found — install Termux, then open OpenCode setup")
+                }
                 stopSelfSoon()
                 return
             }
@@ -101,6 +108,29 @@ class GatewayService : Service() {
         process = null
         running = false
         Log.i(TAG, "gateway stopped")
+    }
+
+    /** Fire the setup-termux.sh installer into Termux via RUN_COMMAND. */
+    private fun tryTermuxInstaller(): Boolean {
+        return try {
+            val intent = Intent().apply {
+                setClassName("com.termux", "com.termux.app.RunCommandService")
+                action = "com.termux.RUN_COMMAND"
+                putExtra(
+                    "com.termux.RUN_COMMAND_COMMAND",
+                    "curl -fsSL https://raw.githubusercontent.com/pravesh34/Opencode-/main/setup-termux.sh | bash"
+                )
+                putExtra("com.termux.RUN_COMMAND_CWD", "/data/data/com.termux/files/home")
+                putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
+                putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", 0)
+            }
+            startService(intent)
+            Log.i(TAG, "sent installer to Termux via RUN_COMMAND")
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "RUN_COMMAND auto-start failed", e)
+            false
+        }
     }
 
     private fun stopSelfSoon() {
