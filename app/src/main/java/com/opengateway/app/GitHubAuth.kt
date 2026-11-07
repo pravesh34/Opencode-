@@ -34,11 +34,11 @@ object GitHubAuth {
     ctx.ghPrefs.edit { it[TOKEN] = token; it[LOGIN] = login }
   }
   suspend fun token(ctx: Context): String? = try {
-    ctx.ghPrefs.data.let { kotlinx.coroutines.flow.first(it)[TOKEN] }
+    ctx.ghPrefs.data.first()[TOKEN]
   } catch (_: Exception) { null }
 
   suspend fun login(ctx: Context): String? = try {
-    ctx.ghPrefs.data.let { kotlinx.coroutines.flow.first(it)[LOGIN] }
+    ctx.ghPrefs.data.first()[LOGIN]
   } catch (_: Exception) { null }
 
   suspend fun logout(ctx: Context) {

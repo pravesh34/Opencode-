@@ -11,13 +11,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,7 +50,7 @@ fun ChatScreen(runner: OpenCodeRunner) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       ExposedDropdownMenuBox(expanded, { expanded = !expanded }) {
         OutlinedTextField(session, {}, Modifier.weight(1f).menuAnchor(), label = { Text("Session") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) })
-        ExposedDropdownMenu(expanded, { expanded = false }) {
+        DropdownMenu(expanded, { expanded = false }) {
           (SessionManager.list(ctx) + "+ New").forEach { s ->
             DropdownMenuItem({ Text(s) }, {
               session = if (s == "+ New") SessionManager.newSession(ctx) else s
