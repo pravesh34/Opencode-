@@ -378,31 +378,16 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        val back = menu.findItem(R.id.menu_back)
-        val fwd = menu.findItem(R.id.menu_forward)
-        back?.isEnabled = webView.canGoBack()
-        fwd?.isEnabled = webView.canGoForward()
-        fwd?.icon?.setAlpha(if (fwd.isEnabled) 255 else 80)
-        back?.icon?.setAlpha(if (back.isEnabled) 255 else 80)
-        return super.onPrepareOptionsMenu(menu)
-    }
-
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            // Switch project: load the chat-list root (web UI handles list vs chat)
+            R.id.menu_switch -> { webView.loadUrl(currentUrl); true }
+            // Reconnect: reload reconnects the WebSocket + health check
             R.id.menu_reload -> { webView.reload(); true }
-            R.id.menu_home -> { webView.loadUrl(currentUrl); true }
-            R.id.menu_back -> { if (webView.canGoBack()) webView.goBack(); true }
-            R.id.menu_forward -> { if (webView.canGoForward()) webView.goForward(); true }
-            R.id.menu_share -> { shareCurrent(); true }
-            R.id.menu_copy_url -> { copyUrl(webView.url ?: currentUrl); true }
-            R.id.menu_open_browser -> { openInBrowser(webView.url ?: currentUrl); true }
             R.id.menu_native_terminal -> { startActivity(Intent(this, NativeTerminalActivity::class.java)); true }
             R.id.menu_opencode_setup -> { startActivity(Intent(this, OpenCodeSetupActivity::class.java)); true }
             R.id.menu_gateway_start -> { GatewayService.start(this); Toast.makeText(this, getString(R.string.gateway_starting), Toast.LENGTH_SHORT).show(); true }
             R.id.menu_gateway_stop -> { GatewayService.stop(this); Toast.makeText(this, getString(R.string.gateway_stopping), Toast.LENGTH_SHORT).show(); true }
-            R.id.menu_termux -> { openTermuxApp(); true }
-            R.id.menu_opencode -> { openOpencodeTab(); true }
             R.id.menu_settings -> { showSettingsDialog(); true }
             else -> super.onOptionsItemSelected(item)
         }

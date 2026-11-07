@@ -12,8 +12,10 @@ function esc(s){ return String(s||''); }
 // ---------- Project store ----------
 let projects = [];
 let activeProjectId = null;
-let activeView = 'chat'; // 'chat' | 'terminal' | 'settings'
+let activeView = 'chat'; // 'chat' | 'terminal' | 'settings' | 'preview'
 let defaultCwd = null;
+let gatewayOnline = false;
+let gitBranch = '';
 
 function migrateProject(p) {
   if (p && !Array.isArray(p.sessions)) {
@@ -59,11 +61,16 @@ function ensureDefaultProject() {
   projects.push(p); activeProjectId = p.id; saveProjects();
 }
 function projectSubtitle(p) {
+  // keep for tooltips/modals; chat header uses chatSubtitle (reference style)
   const cwd = p.cwd ? p.cwd.replace(/^\/Users\/[^/]+/, '~').split('/').slice(-2).join('/') : 'no folder';
   const s = getActiveSession(p);
   const m = s && s.model ? s.model.split('/').pop() : 'default model';
   const sc = (p.sessions||[]).length;
   return `${cwd} · ${m}${sc>1 ? ' · '+sc+' sessions' : ''}`;
+}
+function chatSubtitle(p) {
+  const br = gitBranch || 'main';
+  return `${br} · ${gatewayOnline ? 'Connected' : 'Disconnected'}`;
 }
 
 // ---------- Rendering ----------
@@ -71,15 +78,27 @@ function renderProjectList() {
   const list = $('#project-list'); if (!list) return;
   const q = ($('#project-search')?.value || '').toLowerCase();
   const items = projects.filter(p => !q || p.name.toLowerCase().includes(q) || (p.cwd||'').toLowerCase().includes(q));
+  const dotCls = gatewayOnline ? 'on' : 'off';
   list.innerHTML = items.map(p => {
     const s = getActiveSession(p);
     const msgs = (s && s.messages) || [];
-    const last = msgs.filter(m=>m.role==='user'||m.role==='assistant').slice(-1)[0];
-    const preview = last ? (last.text||'').replace(/\s+/g,' ').slice(0, 60) : projectSubtitle(p);
+    const lastUser = msgs.filter(m=>m.role==='user').slice(-1)[0];
+    // Reference style: "main · Last: Fix chart colors" — no long paths here.
+    const br = gitBranch || 'main';
+    const preview = lastUser
+      ? `${br} · Last: ${(lastUser.text||'').replace(/\s+/g,' ').slice(0, 45)}`
+      : `${br} · No messages yet`;
     const av = p.icon || (p.name||'P').trim().charAt(0).toUpperCase();
+    const status = gatewayOnline
+      ? '<span class="project-status"><span class="sdot on"></span>Running</span>'
+      : '<span class="project-status"><span class="sdot amber"></span>Stopped</span>';
     return `<div class="project-item ${p.id===activeProjectId && activeView==='chat' ? 'active':''}" data-id="${p.id}">
       <div class="avatar" style="background:${p.color||COLORS[0]}">${av}</div>
-      <div class="project-meta"><div class="name">${escapeHtml(p.name||'Project')}</div><div class="sub">${escapeHtml(preview)}</div></div>
+      <div class="project-meta">
+        <div class="name">${escapeHtml(p.name||'Project')}</div>
+        <div class="sub">${escapeHtml(preview)}</div>
+      </div>
+      ${status}
     </div>`;
   }).join('') || `<div style="padding:18px;color:var(--muted);font-size:13px">No projects yet. Tap ＋ to create one.</div>`;
   list.querySelectorAll('.project-item').forEach(el => el.addEventListener('click', () => selectProject(el.dataset.id)));
@@ -100,9 +119,33 @@ function renderMessages(p, sid) {
   const box = $('#project-messages'); if (!box) return;
   p = p || getProject(); if (!p) { box.innerHTML=''; return; }
   const s = sid ? (p.sessions||[]).find(x=>x.id===sid) : getActiveSession(p);
-  box.innerHTML = ((s && s.messages)||[]).map(m => `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`).join('');
+  const msgs = (s && s.messages)||[];
+  if (!msgs.length) {
+    box.innerHTML = `<div class="starter-card"><h3>Start with an idea</h3>
+      <p class="muted small">Describe what you want — OpenCode writes it, you review it. Try:</p>
+      <div class="chips" style="padding:8px 0">
+        <button class="chip" type="button" data-starter="Build a login page for my app.">Build a login page</button>
+        <button class="chip" type="button" data-starter="Fix my last error.">Fix my last error</button>
+        <button class="chip" type="button" data-starter="Explain what this project does.">Explain this project</button>
+      </div></div>`;
+  } else {
+    box.innerHTML = msgs.map(m => {
+      if (m.role === 'assistant') {
+        return `<div class="msg assistant">${escapeHtml(m.text)}<div class="msg-actions">
+          <button class="btn small secondary" type="button" data-act="accept">Accept</button>
+          <button class="btn small secondary" type="button" data-act="undo">Undo</button>
+        </div></div>`;
+      }
+      return `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`;
+    }).join('');
+  }
   box.scrollTop = box.scrollHeight;
 }
+// Accept = ask OpenCode to commit; Undo = ask it to revert. Real prompts, not fake buttons.
+$('#project-messages')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-act]'); if (!btn) return;
+  sendPrompt(btn.dataset.act === 'accept' ? 'Commit the current change with a good message.' : 'Undo your last change.');
+});
 function addSessionMessage(p, sid, role, text, persist=true) {
   if (!p) return;
   const s = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p); if (!s) return;
@@ -120,7 +163,7 @@ function addProjectMessage(p, role, text, persist=true) { const s=getActiveSessi
 function switchSession(pid, sid) {
   const p = getProject(pid); if(!p) return;
   p.activeSessionId = sid; saveProjects();
-  if (activeProjectId===p.id) { renderSessionTabs(p); renderMessages(p, sid); $('#chat-subtitle').textContent = projectSubtitle(p); syncSessionConfig(p, sid); }
+  if (activeProjectId===p.id) { renderSessionTabs(p); renderMessages(p, sid); $('#chat-subtitle').textContent = chatSubtitle(p); syncSessionConfig(p, sid); }
   renderProjectList();
 }
 function deleteSession(pid, sid) {
@@ -140,7 +183,8 @@ function syncSessionConfig(p, sid) {
 
 function setMainView(view) {
   activeView = view;
-  $('#view-chat').style.display = view==='chat' ? 'flex' : 'none';
+  $('#view-chat').style.display = (view==='chat') ? 'flex' : 'none';
+  $('#view-preview').style.display = (view==='preview') ? 'flex' : 'none';
   $('#view-terminal').style.display = view==='terminal' ? 'flex' : 'none';
   $('#view-files').style.display = view==='files' ? 'flex' : 'none';
   $('#view-settings').style.display = view==='settings' ? 'flex' : 'none';
@@ -148,11 +192,23 @@ function setMainView(view) {
   $('#nav-files').classList.toggle('active', view==='files');
   $('#nav-terminal').classList.toggle('active', view==='terminal');
   $('#nav-settings').classList.toggle('active', view==='settings');
+  $$('#chat-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === view));
   if (view !== 'chat') { $$('.project-item').forEach(el=>el.classList.remove('active')); $('#app').classList.add('show-main'); }
   if (view === 'terminal') { const s = $('#ws-state'); if (s) $('#ws-state-term').textContent = s.textContent, $('#ws-state-term').className = s.className; }
   if (view === 'settings') syncSettingsStatus();
   if (view === 'files') openFileExplorer();
+  if (view === 'preview') loadPreview();
   renderProjectList();
+}
+function loadPreview() {
+  const p = getProject(); if (!p) return;
+  const urlInput = $('#preview-url');
+  const saved = (p.previewUrl || '').trim();
+  if (urlInput && !urlInput.value) urlInput.value = saved;
+  const frame = $('#preview-frame'); const wrap = $('.preview-wrap');
+  const url = (urlInput && urlInput.value.trim()) || saved;
+  if (url && frame) { if (frame.getAttribute('src') !== url) frame.src = url; wrap && wrap.classList.add('filled'); }
+  else { wrap && wrap.classList.remove('filled'); }
 }
 function showChatView() {
   const p = getProject();
@@ -162,7 +218,7 @@ function showChatView() {
   const av = p.icon || (p.name||'P').trim().charAt(0).toUpperCase();
   $('#chat-avatar').textContent = av; $('#chat-avatar').style.background = p.color || COLORS[0];
   $('#chat-title').textContent = p.name || 'Project';
-  $('#chat-subtitle').textContent = projectSubtitle(p);
+  $('#chat-subtitle').textContent = chatSubtitle(p);
   renderSessionTabs(p);
   renderMessages(p);
   $('#app').classList.add('show-main');
@@ -183,6 +239,12 @@ let ws = null, wsIntentionalClose = false, wsBackoff = 1500, wsTimer = null;
 function defaultWs() { const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'; return `${proto}//${location.host}/ws`; }
 function setWsPill(text, cls) {
   ['#ws-state','#ws-state-term','#ws-state-settings'].forEach(sel => { const el=$(sel); if(!el) return; el.textContent=text; el.className= sel==='#ws-state-settings' ? '' : 'pill '+cls; if(sel==='#ws-state-settings') el.textContent=text; });
+  const connected = cls === 'ok';
+  const banner = $('#conn-banner');
+  if (banner) banner.classList.toggle('hidden', connected);
+  const input = $('#opencode-input'), send = $('#send-btn');
+  if (input) { input.disabled = !connected; if (!connected) input.placeholder = 'Disconnected — tap Reconnect'; else input.placeholder = 'Describe what you want…'; }
+  if (send) send.disabled = !connected;
 }
 function wsSend(obj){ if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
 function scheduleWsReconnect() {
@@ -221,6 +283,7 @@ function handleServerMsg(j) {
   if (j.type==='user' || j.type==='assistant') { if(p) addSessionMessage(p, sid, j.type, j.text); }
   else if (j.type==='system') { /* quiet */ }
   else if (j.type==='terminal') addTerm(j.text);
+  else if (j.type==='terminal_done') onTerminalDone(j.exitCode || 0);
   else if (j.type==='opencode_text') { clearSlowTimer(); if(p) appendAssistantStream(p, sid, j.text); }
   else if (j.type==='opencode_event') { /* quiet */ }
   else if (j.type==='opencode_meta') { if(p) addSessionMessage(p, sid, 'system', j.text); }
@@ -230,10 +293,16 @@ function handleServerMsg(j) {
 }
 
 async function health() {
-  const set = (ok) => { const h=$('#health'); if(h){h.textContent=ok?'Online':'Offline'; h.className='pill '+(ok?'ok':'bad');} const h2=$('#health2'); if(h2) h2.textContent=ok?'Online':'Offline'; };
+  const set = (ok) => { gatewayOnline = ok;
+    const ht=$('#health-text'); if(ht) ht.textContent=ok?'Connected':'Disconnected';
+    const hd=$('#health .dot'); if(hd) hd.className='dot '+(ok?'on':'off');
+    const h2=$('#health2'); if(h2) h2.textContent=ok?'Online':'Offline';
+    if (ws && ws.readyState===WebSocket.OPEN) setWsPill('Connected','ok'); else if (!ok && ws==null) setWsPill('Disconnected','bad');
+  };
   try {
     const r = await fetch('/api/health', { cache: 'no-store' }); const j = await r.json();
     set(!!j.ok);
+    if (j.branch && j.branch !== '—') gitBranch = j.branch;
     if (j.project && !defaultCwd) defaultCwd = j.project;
     if (j.shell) { const el=$('#shell-state'); if(el) el.textContent = j.platform==='darwin'?'Mac':(j.platform==='android'?'Termux':j.platform||'host'); const sub=$('#shell-sub'); if(sub) sub.textContent=String(j.shell).split('/').pop(); }
     if (j.opencode !== undefined) { const el=$('#opencode-state'); if(el) el.textContent=j.opencode?'Ready':'CLI missing'; const sub=$('#opencode-sub'); if(sub) sub.textContent=j.opencode?'opencode run available':'Install opencode, restart server'; }
@@ -285,7 +354,7 @@ function updateOpenCodeInfo(j) {
       saveProjects();
     }
     if (activeProjectId === p.id) {
-      $('#chat-subtitle').textContent = projectSubtitle(p);
+      $('#chat-subtitle').textContent = chatSubtitle(p);
       renderSessionTabs(p);
       if ($('#project-modal-back').classList.contains('show') && s) $('#proj-session-id').textContent = s.opencodeSession || 'new session';
     }
@@ -303,11 +372,9 @@ function fillModelList(models) {
   const p=getProject(); const s=getActiveSession(p); if($('#session-model')) $('#session-model').value = (s&&s.model)||'';
 }
 
-$('#opencode-form').addEventListener('submit', e => {
-  e.preventDefault();
-  const text = $('#opencode-input').value; if(!text.trim()) return;
-  const p = getProject(); if(!p){ toast('Create a project first'); return; }
-  const s = getActiveSession(p); if(!s){ toast('Create a session first'); return; }
+function sendPrompt(text) {
+  const p = getProject(); if(!p){ toast('Create a project first'); return false; }
+  const s = getActiveSession(p); if(!s){ toast('Create a session first'); return false; }
   addSessionMessage(p, s.id, 'user', text);
   opencodeCurrentDone = false;
   clearSlowTimer();
@@ -315,8 +382,33 @@ $('#opencode-form').addEventListener('submit', e => {
   if (ws && ws.readyState === WebSocket.OPEN) {
     wsSend({type:'opencode_prompt', projectId:p.id, sessionId:s.id, text});
   } else { clearSlowTimer(); addSessionMessage(p,s.id,'assistant','(offline) Start the gateway server to use OpenCode.'); }
-  $('#opencode-input').value = '';
+  return true;
+}
+$('#opencode-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const text = $('#opencode-input').value; if(!text.trim()) return;
+  if (sendPrompt(text)) $('#opencode-input').value = '';
 });
+// quick-action chips + starter prompts
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-chip]'); const starter = e.target.closest('[data-starter]');
+  if (chip) { sendPrompt(chip.dataset.chip + '…'); }
+  if (starter) { sendPrompt(starter.dataset.starter); }
+});
+// chat tabs
+$$('#chat-tabs .tab').forEach(t => t.addEventListener('click', () => {
+  if (t.dataset.tab === 'terminal') setMainView('terminal');
+  else setMainView(t.dataset.tab); // 'chat' | 'preview'
+}));
+$('#back-preview')?.addEventListener('click', backToList);
+$('#preview-reload')?.addEventListener('click', () => { const f = $('#preview-frame'); if (f && f.src) f.src = f.src; });
+$('#preview-go')?.addEventListener('click', () => {
+  const p = getProject(); const url = ($('#preview-url').value || '').trim();
+  if (!url) { toast('Paste your dev-server URL first'); return; }
+  if (p) { p.previewUrl = url; saveProjects(); }
+  loadPreview();
+});
+$('#reconnect-btn')?.addEventListener('click', () => { wsBackoff = 1500; connectWs(); toast('Reconnecting…'); });
 const ocReset = $('#opencode-reset'); if (ocReset) ocReset.addEventListener('click', () => {
   const p = getProject(); const s = getActiveSession(p); if(!p||!s) return;
   if (ws && ws.readyState === WebSocket.OPEN) wsSend({type:'opencode_reset', projectId:p.id, sessionId:s.id});
@@ -325,20 +417,73 @@ const ocReset = $('#opencode-reset'); if (ocReset) ocReset.addEventListener('cli
 });
 
 // ---------- Terminal ----------
+const TERM_HIST_KEY = 'og_term_history';
+let termHistory = []; try { termHistory = JSON.parse(localStorage.getItem(TERM_HIST_KEY) || '[]'); } catch { termHistory = []; }
+let termHistIdx = -1;
+let lastTermCmd = '', lastTermError = '';
 function addTerm(text) {
   const t=$('#term-out'); if(!t) return;
   t.textContent += (t.textContent && !t.textContent.endsWith('\n') ? '\n':'') + String(text) + '\n';
   t.parentElement.scrollTop = 1e9;
 }
+function runTermCmd(cmd) {
+  const p = getProject();
+  if (ws && ws.readyState === WebSocket.OPEN) wsSend({type:'terminal_input', projectId: p?p.id:undefined, text:cmd});
+  else addTerm(`[offline] ${cmd}`);
+}
 $('#term-form').addEventListener('submit', e => {
   e.preventDefault();
   const cmd = $('#term-input').value; if(!cmd.trim()) return;
   if (cmd.trim()==='clear'){ $('#term-out').textContent=''; $('#term-input').value=''; return; }
-  const p = getProject();
-  if (ws && ws.readyState === WebSocket.OPEN) wsSend({type:'terminal_input', projectId: p?p.id:undefined, text:cmd});
-  else addTerm(`[offline] ${cmd}`);
+  lastTermCmd = cmd; lastTermError = '';
+  $('#term-to-chat')?.classList.add('hidden');
+  termHistory.push(cmd); if (termHistory.length > 100) termHistory = termHistory.slice(-100);
+  try { localStorage.setItem(TERM_HIST_KEY, JSON.stringify(termHistory)); } catch {}
+  termHistIdx = -1;
+  runTermCmd(cmd);
   $('#term-input').value='';
 });
+// ↑↓ history + Tab completion hint
+$('#term-input')?.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  if (!termHistory.length) return;
+  e.preventDefault();
+  if (e.key === 'ArrowUp') termHistIdx = Math.min(termHistIdx + 1, termHistory.length - 1);
+  else termHistIdx = Math.max(termHistIdx - 1, -1);
+  $('#term-input').value = termHistory[termHistory.length - 1 - termHistIdx] || '';
+});
+// key row: Esc/Tab/Ctrl/arrows insert into the command line (line-based shell)
+$('#term-keys')?.addEventListener('click', (e) => {
+  const key = e.target.closest('[data-key]'); if (!key) return;
+  const input = $('#term-input'); if (!input) return;
+  const k = key.dataset.key;
+  if (k === 'up') { if (termHistory.length) input.value = termHistory[termHistory.length - 1]; }
+  else if (k === 'down') { input.value = ''; }
+  else if (k === 'tab') { input.value += '\t'; }
+  else if (k === 'esc') { input.value = ''; }
+  else if (k === 'ctrl') { input.value += '^C'; } // shell sees literal text; kept for muscle memory
+  else if (k === 'left' || k === 'right') { input.setSelectionRange(Math.max(0, input.value.length - 1), Math.max(0, input.value.length - 1)); }
+  else { input.value += k; }
+  input.focus();
+});
+$('#term-copy')?.addEventListener('click', async () => {
+  const t = $('#term-out'); if (!t) return;
+  try { await navigator.clipboard.writeText(t.textContent || ''); toast('Output copied'); }
+  catch { toast('Copy failed — long-press to select'); }
+});
+$('#term-to-chat')?.addEventListener('click', () => {
+  if (!lastTermError) return;
+  setMainView('chat');
+  sendPrompt(`Fix this terminal error.\n\nCommand: ${lastTermCmd}\nOutput:\n${lastTermError.slice(-1500)}`);
+});
+// server reports exit code — show "Send error to chat" on failure
+function onTerminalDone(exitCode) {
+  const btn = $('#term-to-chat');
+  if (exitCode !== 0 && btn) {
+    const t = $('#term-out'); lastTermError = t ? t.textContent.slice(-2000) : '';
+    btn.classList.remove('hidden');
+  } else if (btn) btn.classList.add('hidden');
+}
 
 // ---------- Project modal (customization) ----------
 let modalProjectId = null;
@@ -352,6 +497,7 @@ function openProjectModal(id) {
   $('#proj-name').value = proj.name || '';
   $('#proj-icon').value = proj.icon && proj.icon.length <= 4 ? proj.icon : '';
   $('#proj-cwd').value = proj.cwd || defaultCwd || '';
+  const pv = $('#proj-preview'); if (pv) pv.value = (p && proj.previewUrl) || '';
   $('#proj-session-id').textContent = (s && s.opencodeSession) || 'new session';
   $('#proj-delete').style.display = isNew ? 'none' : '';
   // relabel session buttons for non-destructive behavior
@@ -384,10 +530,11 @@ $('#proj-save').addEventListener('click', () => {
   const icon = $('#proj-icon').value.trim();
   const color = ($('#proj-swatches .swatch.sel')||{}).dataset?.color || COLORS[0];
   const cwd = $('#proj-cwd').value.trim() || defaultCwd || '';
+  const pv = $('#proj-preview'); const previewUrl = pv ? pv.value.trim() : '';
   const model = $('#opencode-model') ? ($('#opencode-model').value || '') : '';
   if (modalProjectId) {
     const p = getProject(modalProjectId); if(!p) return;
-    Object.assign(p, { name, icon: icon || name.charAt(0).toUpperCase(), color, cwd });
+    Object.assign(p, { name, icon: icon || name.charAt(0).toUpperCase(), color, cwd, previewUrl });
     const s = getActiveSession(p); if (s) s.model = model;
     saveProjects();
     wsSend({type:'project_config', projectId:p.id, cwd});
@@ -396,7 +543,7 @@ $('#proj-save').addEventListener('click', () => {
     toast('Project saved');
   } else {
     const sid = uid();
-    const p = { id: uid(), name, icon: icon || name.charAt(0).toUpperCase(), color, cwd, activeSessionId: sid, sessions: [{ id: sid, name: 'Session 1', model, opencodeSession: null, messages: [] }] };
+    const p = { id: uid(), name, icon: icon || name.charAt(0).toUpperCase(), color, cwd, previewUrl, activeSessionId: sid, sessions: [{ id: sid, name: 'Session 1', model, opencodeSession: null, messages: [] }] };
     projects.unshift(p); activeProjectId = p.id; saveProjects();
     renderProjectList(); showChatView();
     toast('Project created');
@@ -468,10 +615,11 @@ $('#files-refresh').addEventListener('click', ()=>loadFileList(filesCwd));
 $('#back-files').addEventListener('click', backToList);
 $('#nav-files').addEventListener('click', ()=>setMainView('files'));
 const sessAdd = $('#session-add'); if (sessAdd) sessAdd.addEventListener('click', () => { const p=getProject(); if(!p) return; createSession(p); renderSessionTabs(p); renderMessages(p); syncSessionConfig(p); renderProjectList(); toast('New session added'); });
-const sessModel = $('#session-model'); if (sessModel) sessModel.addEventListener('change', () => { const p=getProject(); const s=getActiveSession(p); if(!p||!s) return; s.model = sessModel.value||''; saveProjects(); wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null}); $('#chat-subtitle').textContent = projectSubtitle(p); renderProjectList(); toast(s.model ? 'Model set' : 'Model: default'); });
+const sessModel = $('#session-model'); if (sessModel) sessModel.addEventListener('change', () => { const p=getProject(); const s=getActiveSession(p); if(!p||!s) return; s.model = sessModel.value||''; saveProjects(); wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null}); $('#chat-subtitle').textContent = chatSubtitle(p); renderProjectList(); toast(s.model ? 'Model set' : 'Model: default'); });
 
 // ---------- Wiring ----------
 $('#new-project-btn').addEventListener('click', ()=>openProjectModal(null));
+$('#fab-new-project')?.addEventListener('click', ()=>openProjectModal(null));
 $('#empty-new-project').addEventListener('click', ()=>openProjectModal(null));
 $('#project-settings-btn').addEventListener('click', ()=>openProjectModal(activeProjectId));
 $('#project-search').addEventListener('input', renderProjectList);

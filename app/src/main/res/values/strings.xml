@@ -26,7 +26,8 @@
     <string name="copied">Copied</string>
     <string name="menu_back">Back</string>
     <string name="menu_forward">Forward</string>
-    <string name="menu_reload">Reload</string>
+    <string name="menu_reload">Reconnect</string>
+    <string name="menu_switch">Switch project</string>
     <string name="menu_home">Home</string>
     <string name="menu_share">Share</string>
     <string name="menu_copy_url">Copy link</string>

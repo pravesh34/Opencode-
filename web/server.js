@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn, execFile } = require('child_process');
+const { spawn, execFile, execFileSync } = require('child_process');
 const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 3000;
@@ -30,6 +30,17 @@ function detectShell() {
 const SHELL_BIN = detectShell();
 console.log(`Shell: ${SHELL_BIN} (${process.platform})`);
 
+// git branch for the project list (cached at startup; refresh on /api/health if stale)
+let GIT_BRANCH = '—';
+function gitBranch() {
+  try {
+    const b = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: PROJECT_ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    if (b) GIT_BRANCH = b;
+  } catch {}
+  return GIT_BRANCH;
+}
+gitBranch();
+
 const mime = {
   '.html': 'text/html',
   '.css': 'text/css',
@@ -50,7 +61,7 @@ function serve(req, res) {
     if (err) {
       if (urlPath === '/api/health') {
         res.writeHead(200, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
-        return res.end(JSON.stringify({ ok: true, time: Date.now(), opencode: !!OPENCODE, shell: SHELL_BIN, platform: process.platform, project: PROJECT_ROOT }));
+        return res.end(JSON.stringify({ ok: true, time: Date.now(), opencode: !!OPENCODE, shell: SHELL_BIN, platform: process.platform, branch: gitBranch(), project: PROJECT_ROOT }));
       }
       if (urlPath === '/api/fs/list') {
         try {
@@ -160,6 +171,7 @@ function runTerminal(ws, session, cmd, pid) {
       else { safeSend(ws, { type: 'terminal', projectId: id, text: `${line}\ncd: ${target}: Not a directory` }); return; }
     } catch (e) { safeSend(ws, { type: 'terminal', projectId: id, text: `${line}\ncd: ${target}: No such file or directory` }); return; }
     safeSend(ws, { type: 'terminal', projectId: id, text: `$ ${line}` });
+    safeSend(ws, { type: 'terminal_done', projectId: id, exitCode: 0 });
     return;
   }
 
@@ -174,6 +186,7 @@ function runTerminal(ws, session, cmd, pid) {
   child.on('close', (code) => {
     if (out) safeSend(ws, { type: 'terminal', projectId: id, text: out.replace(/\s+$/,'') });
     if (code !== 0) safeSend(ws, { type: 'terminal', projectId: id, text: `[exit ${code}]` });
+    safeSend(ws, { type: 'terminal_done', projectId: id, exitCode: code || 0 });
   });
 }
 
