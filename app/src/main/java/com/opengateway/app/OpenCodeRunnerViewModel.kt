@@ -13,16 +13,29 @@ class OpenCodeRunnerViewModel(private val runner: OpenCodeRunner, private val se
   val busy: StateFlow<Boolean> = _busy
 
   fun send(text: String) {
+    val msg = text.trim()
+    if (msg.isBlank()) return
     viewModelScope.launch {
       _busy.value = true
-      _messages.value = _messages.value + "You: $text"
-      val sb = StringBuilder()
+      val provider = try { settings.provider() } catch (_: Exception) { "opencode" }
+      val model = try { settings.model() } catch (_: Exception) { null }
+      val perm = try { settings.permission() } catch (_: Exception) { "plan" }
+      val thinking = try { settings.thinking() } catch (_: Exception) { "medium" }
+      val sess = try { settings.session() } catch (_: Exception) { null }
+      val env = try { settings.envForProvider(provider) } catch (_: Exception) { emptyMap<String,String>() }
+      _messages.value = _messages.value + "You: $msg"
       try {
-        runner.runPrompt(text, settings.model(), settings.session()).collect { chunk ->
-          sb.append(chunk)
+        var saw = false
+        runner.runPrompt(msg, model, sess, perm, env).collect { chunk ->
+          saw = true
           _messages.value = _messages.value + "AI: $chunk"
         }
-      } finally { _busy.value = false }
+        if (!saw) _messages.value = _messages.value + "AI: [no output - binary may still be extracting, try again]"
+      } catch (e: Exception) {
+        _messages.value = _messages.value + "AI: [error] ${e.message}"
+      } finally {
+        _busy.value = false
+      }
     }
   }
 }

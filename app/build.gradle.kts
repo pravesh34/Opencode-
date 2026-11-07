@@ -32,7 +32,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.13" }
+    // Kotlin 2.0.21 uses compose compiler plugin (declared in root), no kotlinCompilerExtensionVersion
 }
 
 dependencies {
@@ -54,8 +54,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.security:security-crypto:1.1.0")
+    implementation("androidx.browser:browser:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // org.json (built into Android) used for opencode JSON - no kotlinx-serialization plugin needed
     // Tier 1 terminal: busybox in assets + terminal-emulator view
     implementation("com.github.termux.termux-app:terminal-view:v0.118.3")
     implementation("com.github.termux.termux-app:terminal-emulator:v0.118.3")

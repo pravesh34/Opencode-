@@ -2,6 +2,7 @@ name: Android APK (Standalone v2 - arm64 only)
 
 on:
   push:
+    branches: [ '**' ]
     tags: [ 'v*' ]
   workflow_dispatch:
 
@@ -14,28 +15,43 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Fetch opencode + busybox (arm64, pinned, checksum optional)
+      - name: Fetch opencode + busybox (arm64, pinned)
         run: |
           set -e
-          OPENCODE_VERSION="1.2.34"  # pin: check https://github.com/opencode-ai/opencode/releases
+          OPENCODE_VERSION="1.19.5"
           mkdir -p app/src/main/assets/bin/arm64-v8a
-          curl -fL "https://github.com/opencode-ai/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-arm64" -o app/src/main/assets/bin/arm64-v8a/opencode
+          # opencode: sst/opencode mirrored at anomalyco/opencode; tar contains single `opencode` binary (musl = runs on Android)
+          curl -fL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-arm64-musl.tar.gz" -o /tmp/opencode.tar.gz
+          tar xzf /tmp/opencode.tar.gz -C /tmp
+          cp /tmp/opencode app/src/main/assets/bin/arm64-v8a/opencode
           chmod +x app/src/main/assets/bin/arm64-v8a/opencode
-          # busybox static aarch64 (Tier 1 Termux-like coreutils)
-          curl -fL "https://www.busybox.net/downloads/binaries/1.36.1-x86_64-linux-musl/busybox64" -o /tmp/busybox 2>/dev/null || true
-          # Preferred: Magisk busybox aarch64 - replace this URL with pinned sha256 build; keep offline fallback
-          if [ -f /tmp/busybox ]; then cp /tmp/busybox app/src/main/assets/bin/arm64-v8a/busybox; fi
+          # Tier 1 busybox: Alpine aarch64 static (musl) - apk = tar with data.tar.gz -> bin/busybox
+          curl -fL "https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/busybox-static-1.36.1-r31.apk" -o /tmp/busybox.apk
+          mkdir -p /tmp/bb && tar xzf /tmp/busybox.apk -C /tmp/bb
+          cp /tmp/bb/bin/busybox.static app/src/main/assets/bin/arm64-v8a/busybox
+          chmod +x app/src/main/assets/bin/arm64-v8a/busybox
           ls -lh app/src/main/assets/bin/arm64-v8a/
 
-      - name: Build release AAB (arm64)
+      - name: Build debug APK + release AAB
         run: |
-          if [ -f gradlew ]; then chmod +x gradlew && ./gradlew bundleRelease; else gradle bundleRelease; fi
+          if [ -f gradlew ]; then chmod +x gradlew && ./gradlew assembleDebug bundleRelease; else gradle assembleDebug bundleRelease; fi
 
       - uses: actions/upload-artifact@v4
-        with: { name: app-release-aab, path: app/build/outputs/bundle/release/*.aab }
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
 
-      - name: Publish release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: app/build/outputs/bundle/release/*.aab
+          retention-days: 90
+
+      - name: Publish AAB on tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/bundle/release/*.aab
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/bundle/release/*.aab
