@@ -18,14 +18,18 @@ jobs:
       - name: Fetch opencode + busybox (arm64, pinned)
         run: |
           set -e
-          OPENCODE_VERSION="1.2.34"
+          OPENCODE_VERSION="1.19.5"
           mkdir -p app/src/main/assets/bin/arm64-v8a
-          curl -fL "https://github.com/opencode-ai/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-arm64" -o app/src/main/assets/bin/arm64-v8a/opencode
+          # opencode: sst/opencode mirrored at anomalyco/opencode; tar contains single `opencode` binary (musl = runs on Android)
+          curl -fL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-arm64-musl.tar.gz" -o /tmp/opencode.tar.gz
+          tar xzf /tmp/opencode.tar.gz -C /tmp
+          cp /tmp/opencode app/src/main/assets/bin/arm64-v8a/opencode
           chmod +x app/src/main/assets/bin/arm64-v8a/opencode
-          # Tier 1 busybox: try static aarch64 first, fall back to placeholder check
-          # Replace with pinned static build (sha256) for production:
-          #  e.g. curl -fL https://github.com/Magisk-Modules-Repo/.../busybox-aarch64 -o app/src/main/assets/bin/arm64-v8a/busybox
-          curl -fL "https://www.busybox.net/downloads/binaries/1.36.1-arm64-linux-musl/busybox" -o app/src/main/assets/bin/arm64-v8a/busybox || curl -fL "https://busybox.net/downloads/binaries/1.31.0-defconfig-static/busybox-aarch64" -o app/src/main/assets/bin/arm64-v8a/busybox
+          # Tier 1 busybox: Alpine aarch64 static (musl) - apk = tar with data.tar.gz -> bin/busybox
+          curl -fL "https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/busybox-static-1.36.1-r31.apk" -o /tmp/busybox.apk
+          tar xzf /tmp/busybox.apk -C /tmp
+          tar xzf /tmp/data.tar.gz -C /tmp
+          cp /tmp/bin/busybox app/src/main/assets/bin/arm64-v8a/busybox
           chmod +x app/src/main/assets/bin/arm64-v8a/busybox
           ls -lh app/src/main/assets/bin/arm64-v8a/
 
