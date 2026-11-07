@@ -2,22 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
-    <!-- Termux integration (native terminal + RUN_COMMAND setup) -->
-    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
-    <!-- Standalone gateway service (Option 1) -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <queries>
-        <package android:name="com.termux" />
-        <intent>
-            <action android:name="com.termux.RUN_COMMAND" />
-        </intent>
-    </queries>
 
     <application
         android:allowBackup="true"
@@ -26,57 +10,16 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.OpenGateway"
-        android:usesCleartextTraffic="true"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:launchMode="singleTask">
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
         </activity>
-
-        <activity
-            android:name=".NativeTerminalActivity"
-            android:exported="false"
-            android:label="@string/menu_native_terminal"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:windowSoftInputMode="adjustResize" />
-
-        <activity
-            android:name=".OpenCodeSetupActivity"
-            android:exported="false"
-            android:label="@string/menu_opencode_setup"
-            android:configChanges="orientation|screenSize|keyboardHidden" />
-
-        <service
-            android:name=".GatewayService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
+        <!-- No FileProvider, no foreground service, no WebView. Terminal embedded as composable. -->
     </application>
 </manifest>
