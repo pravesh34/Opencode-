@@ -74,13 +74,16 @@ function setMainView(view) {
   activeView = view;
   $('#view-chat').style.display = view==='chat' ? 'flex' : 'none';
   $('#view-terminal').style.display = view==='terminal' ? 'flex' : 'none';
+  $('#view-files').style.display = view==='files' ? 'flex' : 'none';
   $('#view-settings').style.display = view==='settings' ? 'flex' : 'none';
   $('#view-empty').style.display = 'none';
+  $('#nav-files').classList.toggle('active', view==='files');
   $('#nav-terminal').classList.toggle('active', view==='terminal');
   $('#nav-settings').classList.toggle('active', view==='settings');
   if (view !== 'chat') { $$('.project-item').forEach(el=>el.classList.remove('active')); $('#app').classList.add('show-main'); }
   if (view === 'terminal') { const s = $('#ws-state'); if (s) $('#ws-state-term').textContent = s.textContent, $('#ws-state-term').className = s.className; }
   if (view === 'settings') syncSettingsStatus();
+  if (view === 'files') openFileExplorer();
   renderProjectList();
 }
 function showChatView() {
@@ -166,7 +169,31 @@ function syncSettingsStatus(){ const s=$('#ws-state'); if(s) $('#ws-state-settin
 
 // ---------- OpenCode (per project) ----------
 let opencodeSlowTimer = null, opencodeCurrentDone = true, currentModel = '';
+const streams = {}; // pid -> {el, text}
 function clearSlowTimer(){ if(opencodeSlowTimer){ clearTimeout(opencodeSlowTimer); opencodeSlowTimer=null; } }
+function appendAssistantStream(p, text) {
+  if (!p) return;
+  const pid = p.id; const box = $('#project-messages');
+  if (!streams[pid]) {
+    const el = document.createElement('div'); el.className='msg assistant'; el.textContent='';
+    streams[pid] = { el, text: '' };
+    if (activeProjectId===pid && box) { box.appendChild(el); box.scrollTop = box.scrollHeight; }
+  }
+  streams[pid].text += String(text);
+  streams[pid].el.textContent = streams[pid].text;
+  if (activeProjectId===pid && box) box.scrollTop = box.scrollHeight;
+}
+function finalizeAssistantStream(p) {
+  if (!p) return;
+  const pid = p.id; const s = streams[pid];
+  if (s && s.text) {
+    p.messages = p.messages || []; p.messages.push({ role:'assistant', text: s.text });
+    if (p.messages.length > 200) p.messages = p.messages.slice(-200);
+    saveProjects(); renderProjectList();
+  }
+  if (s && activeProjectId!==pid && s.el && s.el.parentNode) s.el.parentNode.removeChild(s.el);
+  delete streams[pid];
+}
 function updateOpenCodeInfo(j) {
   const pid = j.projectId || activeProjectId;
   const p = pid ? getProject(pid) : null;
@@ -305,6 +332,49 @@ $('#proj-delete').addEventListener('click', () => {
   toast('Project deleted');
 });
 
+// ---------- File explorer ----------
+let filesCwd = '';
+function openFileExplorer() {
+  const p = getProject();
+  filesCwd = (p && p.cwd) || filesCwd || defaultCwd || '';
+  loadFileList(filesCwd);
+}
+async function loadFileList(dir) {
+  const list = $('#file-list'); const pathEl = $('#files-path'); const prev = $('#file-preview');
+  if (!dir) { list.innerHTML = '<div class="muted small" style="padding:12px">No folder set</div>'; return; }
+  list.innerHTML = '<div class="muted small" style="padding:12px">Loading…</div>';
+  try {
+    const r = await fetch('/api/fs/list?path=' + encodeURIComponent(dir));
+    const j = await r.json();
+    if (j.error) throw new Error(j.error);
+    filesCwd = j.path; if (pathEl) pathEl.textContent = j.path; if ($('#files-subtitle')) $('#files-subtitle').textContent = j.path.replace(/^\/Users\/[^/]+/,'~');
+    list.innerHTML = (j.entries||[]).map(e => {
+      const icon = e.type==='dir' ? '📁' : (e.type==='link'?'🔗':'📄');
+      const size = e.type==='file' && e.size ? (e.size<1024?e.size+'B':(e.size<1048576?Math.round(e.size/1024)+'KB':(e.size/1048576).toFixed(1)+'MB')) : '';
+      return `<div class="file-item" data-name="${escapeHtml(e.name)}" data-type="${e.type}"><span class="fi">${icon}</span><span class="fn">${escapeHtml(e.name)}</span><span class="fm">${size}</span></div>`;
+    }).join('') || '<div class="muted small" style="padding:12px">Empty folder</div>';
+    list.querySelectorAll('.file-item').forEach(el => el.addEventListener('click', () => {
+      const name = el.dataset.name; const type = el.dataset.type; const full = filesCwd.replace(/\/$/,'') + '/' + name;
+      if (type==='dir') loadFileList(full);
+      else openFilePreview(full);
+    }));
+  } catch (e) { list.innerHTML = `<div class="muted small" style="padding:12px">Error: ${escapeHtml(e.message||e)}</div>`; }
+}
+async function openFilePreview(filePath) {
+  const prev = $('#file-preview'); if(!prev) return;
+  prev.innerHTML = '<div class="muted small" style="padding:12px">Loading…</div>';
+  try {
+    const r = await fetch('/api/fs/read?path=' + encodeURIComponent(filePath));
+    const j = await r.json();
+    if (j.error) throw new Error(j.error);
+    prev.innerHTML = `<div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)">${escapeHtml(j.path)}</div><pre>${escapeHtml(j.content||'')}</pre>`;
+  } catch (e) { prev.innerHTML = `<div class="muted small" style="padding:12px">Error: ${escapeHtml(e.message||e)}</div>`; }
+}
+$('#files-up').addEventListener('click', ()=>{ if(filesCwd) loadFileList(filesCwd.replace(/\/[^/]+\/?$/,'')||'/'); });
+$('#files-refresh').addEventListener('click', ()=>loadFileList(filesCwd));
+$('#back-files').addEventListener('click', backToList);
+$('#nav-files').addEventListener('click', ()=>setMainView('files'));
+
 // ---------- Wiring ----------
 $('#new-project-btn').addEventListener('click', ()=>openProjectModal(null));
 $('#empty-new-project').addEventListener('click', ()=>openProjectModal(null));
@@ -348,10 +418,11 @@ if (projects.length && activeProjectId) {
 } else {
   $('#view-empty').style.display='flex';
 }
-// deep link #terminal/#settings/#opencode
+// deep link #terminal/#settings/#opencode/#files
 (function(){
   const h=(location.hash||'').slice(1);
   if(h==='terminal') setMainView('terminal');
+  else if(h==='files') setMainView('files');
   else if(h==='settings') { syncSettingsStatus(); setMainView('settings'); }
   else if(h==='opencode') { if (window.innerWidth > 720) showChatView(); else { $('#app').classList.remove('show-main'); renderProjectList(); } }
 })();

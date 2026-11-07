@@ -100,8 +100,23 @@ input:focus,select:focus{border-color:var(--accent)}
 .icon-pick .avatar{width:44px;height:44px;font-size:20px}
 .icon-pick input{flex:1}
 
+/* File explorer */
+.files-wrap{flex:1;display:flex;flex-direction:column;min-height:0}
+.files-bar{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--panel)}
+.files-split{flex:1;display:flex;min-height:0}
+.file-list{width:42%;min-width:220px;max-width:420px;overflow:auto;border-right:1px solid var(--border);background:var(--panel)}
+.file-preview{flex:1;overflow:auto;background:#0a1014}
+.file-preview pre{margin:0;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:#d1d7db}
+.file-item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.03);font-size:14px}
+.file-item:hover{background:var(--panel3)}
+.file-item .fi{width:22px;text-align:center;flex:0 0 auto}
+.file-item .fn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-item .fm{color:var(--muted);font-size:12px}
+@media(max-width:720px){.files-split{flex-direction:column}.file-list{width:100%;max-width:none;max-height:45vh;border-right:0;border-bottom:1px solid var(--border)}}
+
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#182229;border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:40;max-width:90vw;text-align:center}
 .toast.show{opacity:1}
 .muted{color:var(--muted)} .small{font-size:12px}
+.btn.small{padding:8px 12px;font-size:13px}
 .kv{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--panel2);padding:8px 10px;border-radius:8px;word-break:break-all;color:var(--muted)}
 .hidden{display:none !important}

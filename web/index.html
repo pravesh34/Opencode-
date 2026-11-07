@@ -23,6 +23,7 @@
     <div class="search"><input id="project-search" placeholder="Search projects…" autocomplete="off"/></div>
     <div class="project-list" id="project-list"></div>
     <div class="side-foot">
+      <button class="nav-btn" id="nav-files" data-view="files">Files</button>
       <button class="nav-btn" id="nav-terminal" data-view="terminal">Terminal</button>
       <button class="nav-btn" id="nav-settings" data-view="settings">Settings</button>
     </div>
@@ -67,6 +68,29 @@
           <button class="btn" type="submit">Run</button>
         </form>
         <p class="muted small" style="margin:0">Real host shell (Mac zsh / Termux bash). <code>cd</code> persists per session.</p>
+      </div>
+    </div>
+
+    <!-- Files view -->
+    <div id="view-files" class="content" style="display:none;flex-direction:column">
+      <div class="chat-head">
+        <button class="icon-btn back" id="back-files" title="Back">←</button>
+        <div class="avatar" style="width:40px;height:40px;font-size:16px;background:#333">📂</div>
+        <div class="title-wrap">
+          <div class="title">Files</div>
+          <div class="subtitle" id="files-subtitle">Browse project files</div>
+        </div>
+        <button class="icon-btn" id="files-refresh" title="Refresh">↻</button>
+      </div>
+      <div class="files-wrap">
+        <div class="files-bar">
+          <button class="btn secondary small" id="files-up" type="button">Up</button>
+          <div class="kv" id="files-path" style="flex:1;overflow:auto;white-space:nowrap">—</div>
+        </div>
+        <div class="files-split">
+          <div class="file-list" id="file-list"></div>
+          <div class="file-preview" id="file-preview"><div class="muted small" style="padding:12px">Select a file to preview</div></div>
+        </div>
       </div>
     </div>
 

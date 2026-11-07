@@ -50,6 +50,44 @@ function serve(req, res) {
         res.writeHead(200, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
         return res.end(JSON.stringify({ ok: true, time: Date.now(), opencode: !!findOpencode(), shell: SHELL_BIN, platform: process.platform, project: PROJECT_ROOT }));
       }
+      if (urlPath === '/api/fs/list') {
+        try {
+          const u = new URL(req.url, 'http://localhost');
+          const dir = u.searchParams.get('path') || PROJECT_ROOT;
+          const resolved = path.resolve(dir);
+          const entries = fs.readdirSync(resolved, { withFileTypes: true }).map(d => {
+            const full = path.join(resolved, d.name);
+            let size = 0; try { if (d.isFile()) size = fs.statSync(full).size; } catch {}
+            return { name: d.name, type: d.isDirectory() ? 'dir' : (d.isSymbolicLink() ? 'link' : 'file'), size };
+          }).sort((a,b)=> (a.type==='dir'?0:1)-(b.type==='dir'?0:1) || a.name.localeCompare(b.name));
+          res.writeHead(200, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
+          return res.end(JSON.stringify({ path: resolved, entries }));
+        } catch (e) {
+          res.writeHead(400, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
+          return res.end(JSON.stringify({ error: String(e.message || e) }));
+        }
+      }
+      if (urlPath === '/api/fs/read') {
+        try {
+          const u = new URL(req.url, 'http://localhost');
+          const filePath = u.searchParams.get('path');
+          if (!filePath) throw new Error('path required');
+          const resolved = path.resolve(filePath);
+          const st = fs.statSync(resolved);
+          if (!st.isFile()) throw new Error('not a file');
+          if (st.size > 200 * 1024) {
+            res.writeHead(200, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
+            return res.end(JSON.stringify({ path: resolved, truncated: true, content: fs.readFileSync(resolved, 'utf8').slice(0, 200*1024) + '\n\n[truncated]' }));
+          }
+          const buf = fs.readFileSync(resolved);
+          const isBinary = buf.includes(0);
+          res.writeHead(200, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
+          return res.end(JSON.stringify({ path: resolved, binary: isBinary, content: isBinary ? `[binary file, ${st.size} bytes]` : buf.toString('utf8') }));
+        } catch (e) {
+          res.writeHead(400, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
+          return res.end(JSON.stringify({ error: String(e.message || e) }));
+        }
+      }
       res.writeHead(404); return res.end('Not found');
     }
     const ext = path.extname(file);
@@ -260,7 +298,6 @@ function handle(ws) {
     } else if (data.type === 'terminal_input') {
       runTerminal(ws, session, String(data.text || ''), pid);
     } else if (data.type === 'opencode_prompt') {
-      safeSend(ws, { type: 'user', projectId: pid, text: data.text });
       runOpencode(ws, session, String(data.text || ''), pid);
     } else if (data.type === 'opencode_reset') {
       const p = getProject(session, pid);
