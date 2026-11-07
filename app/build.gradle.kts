@@ -32,7 +32,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.13" }
+    // Kotlin 2.0.21 uses compose compiler plugin (declared in root), no kotlinCompilerExtensionVersion
 }
 
 dependencies {

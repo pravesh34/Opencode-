@@ -11,3 +11,8 @@ app/build/
 *.apk
 web/node_modules/
 web/package-lock.json
+# standalone binaries fetched in CI - never commit
+app/src/main/assets/bin/arm64-v8a/opencode
+app/src/main/assets/bin/arm64-v8a/busybox
+.gradle/
+app/build/

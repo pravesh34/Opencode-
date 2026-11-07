@@ -2,6 +2,7 @@ name: Android APK (Standalone v2 - arm64 only)
 
 on:
   push:
+    branches: [ '**' ]
     tags: [ 'v*' ]
   workflow_dispatch:
 
@@ -14,28 +15,40 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Fetch opencode + busybox (arm64, pinned, checksum optional)
+      - name: Fetch opencode + busybox (arm64, pinned)
         run: |
           set -e
-          OPENCODE_VERSION="1.2.34"  # pin: check https://github.com/opencode-ai/opencode/releases
+          OPENCODE_VERSION="1.2.34"
           mkdir -p app/src/main/assets/bin/arm64-v8a
           curl -fL "https://github.com/opencode-ai/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-arm64" -o app/src/main/assets/bin/arm64-v8a/opencode
           chmod +x app/src/main/assets/bin/arm64-v8a/opencode
-          # busybox static aarch64 (Tier 1 Termux-like coreutils)
-          curl -fL "https://www.busybox.net/downloads/binaries/1.36.1-x86_64-linux-musl/busybox64" -o /tmp/busybox 2>/dev/null || true
-          # Preferred: Magisk busybox aarch64 - replace this URL with pinned sha256 build; keep offline fallback
-          if [ -f /tmp/busybox ]; then cp /tmp/busybox app/src/main/assets/bin/arm64-v8a/busybox; fi
+          # Tier 1 busybox: try static aarch64 first, fall back to placeholder check
+          # Replace with pinned static build (sha256) for production:
+          #  e.g. curl -fL https://github.com/Magisk-Modules-Repo/.../busybox-aarch64 -o app/src/main/assets/bin/arm64-v8a/busybox
+          curl -fL "https://www.busybox.net/downloads/binaries/1.36.1-arm64-linux-musl/busybox" -o app/src/main/assets/bin/arm64-v8a/busybox || curl -fL "https://busybox.net/downloads/binaries/1.31.0-defconfig-static/busybox-aarch64" -o app/src/main/assets/bin/arm64-v8a/busybox
+          chmod +x app/src/main/assets/bin/arm64-v8a/busybox
           ls -lh app/src/main/assets/bin/arm64-v8a/
 
-      - name: Build release AAB (arm64)
+      - name: Build debug APK + release AAB
         run: |
-          if [ -f gradlew ]; then chmod +x gradlew && ./gradlew bundleRelease; else gradle bundleRelease; fi
+          if [ -f gradlew ]; then chmod +x gradlew && ./gradlew assembleDebug bundleRelease; else gradle assembleDebug bundleRelease; fi
 
       - uses: actions/upload-artifact@v4
-        with: { name: app-release-aab, path: app/build/outputs/bundle/release/*.aab }
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
 
-      - name: Publish release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: app/build/outputs/bundle/release/*.aab
+          retention-days: 90
+
+      - name: Publish AAB on tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/bundle/release/*.aab
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/bundle/release/*.aab
