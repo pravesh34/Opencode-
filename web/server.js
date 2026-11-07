@@ -178,56 +178,64 @@ function listModels() {
   });
 }
 
-function opencodeInfo(session, pid) {
-  const p = getProject(session, pid);
-  return { projectId: pid || session.activeProject || null, session: p.opencodeSession, model: p.model || null, cwd: p.cwd, busy: !!p.busy };
-}
-
 function getProject(session, pid) {
   const id = pid || session.activeProject || 'default';
-  if (!session.projects[id]) session.projects[id] = { cwd: PROJECT_ROOT, model: null, opencodeSession: null, queue: [], busy: false, opencodeChild: null };
+  if (!session.projects[id]) session.projects[id] = { cwd: PROJECT_ROOT, sessions: {} };
   return session.projects[id];
 }
-
-function processQueue(ws, session, pid) {
+function getSession(session, pid, sid) {
   const p = getProject(session, pid);
-  if (p.busy || p.queue.length === 0) return;
-  const message = p.queue.shift();
-  p.busy = true;
-  safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid) });
-  runOpencodeNow(ws, session, pid, message);
+  const id = sid || 'default';
+  if (!p.sessions[id]) p.sessions[id] = { model: null, opencodeSession: null, queue: [], busy: false, opencodeChild: null };
+  return p.sessions[id];
+}
+function opencodeInfo(session, pid, sid) {
+  const p = getProject(session, pid);
+  const s = getSession(session, pid, sid);
+  return { projectId: pid || session.activeProject || null, sessionId: sid || 'default', session: s.opencodeSession, model: s.model || null, cwd: p.cwd, busy: !!s.busy };
 }
 
-function runOpencode(ws, session, message, pid) {
+function processQueue(ws, session, pid, sid) {
+  const s = getSession(session, pid, sid);
+  if (s.busy || s.queue.length === 0) return;
+  const message = s.queue.shift();
+  s.busy = true;
+  safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
+  runOpencodeNow(ws, session, pid, sid, message);
+}
+
+function runOpencode(ws, session, message, pid, sid) {
   const id = pid || session.activeProject || 'default';
+  const ss = sid || 'default';
   if (!OPENCODE) {
-    safeSend(ws, { type: 'opencode_text', projectId: id, text: `(demo) OpenCode CLI not found on this host. Install it, then restart the server. You said: "${message.slice(0,200)}"` });
-    safeSend(ws, { type: 'opencode_done', projectId: id });
+    safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: `(demo) OpenCode CLI not found on this host. Install it, then restart the server. You said: "${message.slice(0,200)}"` });
+    safeSend(ws, { type: 'opencode_done', projectId: id, sessionId: ss });
     return;
   }
-  const p = getProject(session, id);
-  p.queue.push(String(message));
-  if (p.busy) {
-    safeSend(ws, { type: 'opencode_event', projectId: id, text: 'queued' });
+  const s = getSession(session, id, ss);
+  s.queue.push(String(message));
+  if (s.busy) {
+    safeSend(ws, { type: 'opencode_event', projectId: id, sessionId: ss, text: 'queued' });
   } else {
-    processQueue(ws, session, id);
+    processQueue(ws, session, id, ss);
   }
 }
 
-function runOpencodeNow(ws, session, pid, message) {
+function runOpencodeNow(ws, session, pid, sid, message) {
   const id = pid || session.activeProject || 'default';
+  const ss = sid || 'default';
   const p = getProject(session, id);
+  const s = getSession(session, id, ss);
   const args = ['run', '--format', 'json', message];
-  if (p.model) args.push('--model', p.model);
-  if (p.opencodeSession) args.push('--session', p.opencodeSession);
+  if (s.model) args.push('--model', s.model);
+  if (s.opencodeSession) args.push('--session', s.opencodeSession);
   const cwd = (p.cwd && fs.existsSync(p.cwd)) ? p.cwd : PROJECT_ROOT;
-  console.log('[opencode]', id, args.join(' ').slice(0, 200));
-  // stdin must be ignored — the CLI hangs when stdin is an open pipe
+  console.log('[opencode]', id, ss, args.join(' ').slice(0, 180));
   const child = spawn(OPENCODE, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGINT'); } catch {} }, 5 * 60 * 1000);
   timer.unref && timer.unref();
-  p.opencodeChild = child;
+  s.opencodeChild = child;
   let buf = '';
   let stderrBuf = '';
   let gotText = false;
@@ -240,35 +248,35 @@ function runOpencodeNow(ws, session, pid, message) {
       if (!line) continue;
       try {
         const ev = JSON.parse(line);
-        if (ev.sessionID && !p.opencodeSession) p.opencodeSession = ev.sessionID;
-        if (ev.type === 'text' && ev.part && ev.part.text) { gotText = true; safeSend(ws, { type: 'opencode_text', projectId: id, text: ev.part.text }); }
-        else if (ev.type === 'step_finish' && ev.part && ev.part.cost) safeSend(ws, { type: 'opencode_meta', projectId: id, text: `cost ${ev.part.cost} · ${JSON.stringify(ev.part.tokens || {})}` });
-        else if (ev.type) safeSend(ws, { type: 'opencode_event', projectId: id, text: ev.type });
-      } catch { gotText = true; if (line) safeSend(ws, { type: 'opencode_text', projectId: id, text: line }); }
+        if (ev.sessionID && !s.opencodeSession) s.opencodeSession = ev.sessionID;
+        if (ev.type === 'text' && ev.part && ev.part.text) { gotText = true; safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: ev.part.text }); }
+        else if (ev.type === 'step_finish' && ev.part && ev.part.cost) safeSend(ws, { type: 'opencode_meta', projectId: id, sessionId: ss, text: `cost ${ev.part.cost} · ${JSON.stringify(ev.part.tokens || {})}` });
+        else if (ev.type) safeSend(ws, { type: 'opencode_event', projectId: id, sessionId: ss, text: ev.type });
+      } catch { gotText = true; if (line) safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: line }); }
     }
   });
   child.stderr.on('data', (d) => { stderrBuf += d.toString(); });
   function finish(code) {
     clearTimeout(timer);
-    p.opencodeChild = null;
-    p.busy = false;
-    if (buf.trim() && !gotText) try { const ev = JSON.parse(buf.trim()); if (ev.part?.text) safeSend(ws, { type: 'opencode_text', projectId: id, text: ev.part.text }); } catch { safeSend(ws, { type: 'opencode_text', projectId: id, text: buf.trim() }); }
+    s.opencodeChild = null;
+    s.busy = false;
+    if (buf.trim() && !gotText) try { const ev = JSON.parse(buf.trim()); if (ev.part?.text) safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: ev.part.text }); } catch { safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: buf.trim() }); }
     if (timedOut) {
-      safeSend(ws, { type: 'opencode_text', projectId: id, text: '[opencode timed out after 5 min — try a shorter prompt]' });
+      safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: '[opencode timed out after 5 min — try a shorter prompt]' });
     } else if (code !== 0) {
       const extra = stderrBuf.trim() ? `\n${stderrBuf.trim().slice(-500)}` : '';
-      safeSend(ws, { type: 'opencode_text', projectId: id, text: `[opencode exit ${code}]${extra}` });
+      safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: `[opencode exit ${code}]${extra}` });
     }
-    safeSend(ws, { type: 'opencode_done', projectId: id });
-    safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, id) });
-    processQueue(ws, session, id);
+    safeSend(ws, { type: 'opencode_done', projectId: id, sessionId: ss });
+    safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, id, ss) });
+    processQueue(ws, session, id, ss);
   }
   child.on('error', (err) => {
-    if (!p.busy) return;
-    safeSend(ws, { type: 'opencode_text', projectId: id, text: `OpenCode error: ${err.message}` });
+    if (!s.busy) return;
+    safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: `OpenCode error: ${err.message}` });
     finish(1);
   });
-  child.on('close', (code) => { if (p.busy) finish(code); });
+  child.on('close', (code) => { if (s.busy) finish(code); });
 }
 
 function handle(ws) {
@@ -284,57 +292,61 @@ function handle(ws) {
   ws.on('message', (msg) => {
     let data;
     try { data = JSON.parse(msg.toString()); } catch {
-      // plain text chat → echo
       const text = msg.toString();
       safeSend(ws, { type: 'user', text });
       setTimeout(() => { if (ws.readyState===WebSocket.OPEN) safeSend(ws, { type: 'assistant', text: `(demo echo) ${text.slice(0,120)}` }); }, 200);
       return;
     }
     const pid = data.projectId || session.activeProject || 'default';
+    const sid = data.sessionId || 'default';
     if (data.type === 'chat') {
-      safeSend(ws, { type: 'user', projectId: pid, text: data.text });
-      if (OPENCODE && data.openCode) return runOpencode(ws, session, data.text, pid);
-      setTimeout(() => { if (ws.readyState===WebSocket.OPEN) safeSend(ws, { type: 'assistant', projectId: pid, text: `(demo echo) ${String(data.text).slice(0,120)}` }); }, 200);
+      safeSend(ws, { type: 'user', projectId: pid, sessionId: sid, text: data.text });
+      if (OPENCODE && data.openCode) return runOpencode(ws, session, data.text, pid, sid);
+      setTimeout(() => { if (ws.readyState===WebSocket.OPEN) safeSend(ws, { type: 'assistant', projectId: pid, sessionId: sid, text: `(demo echo) ${String(data.text).slice(0,120)}` }); }, 200);
     } else if (data.type === 'terminal_input') {
       runTerminal(ws, session, String(data.text || ''), pid);
     } else if (data.type === 'opencode_prompt') {
-      runOpencode(ws, session, String(data.text || ''), pid);
+      runOpencode(ws, session, String(data.text || ''), pid, sid);
     } else if (data.type === 'opencode_reset') {
-      const p = getProject(session, pid);
-      p.opencodeSession = null;
-      p.queue = [];
-      if (p.opencodeChild) try { p.opencodeChild.kill('SIGINT'); } catch {}
-      p.opencodeChild = null; p.busy = false;
-      safeSend(ws, { type: 'system', projectId: pid, text: 'OpenCode session reset' });
-      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid) });
+      const s = getSession(session, pid, sid);
+      s.opencodeSession = null; s.queue = [];
+      if (s.opencodeChild) try { s.opencodeChild.kill('SIGINT'); } catch {}
+      s.opencodeChild = null; s.busy = false;
+      safeSend(ws, { type: 'system', projectId: pid, sessionId: sid, text: 'OpenCode session reset' });
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
     } else if (data.type === 'opencode_models') {
       listModels().then((models) => safeSend(ws, { type: 'opencode_models_list', models }));
     } else if (data.type === 'opencode_set_model') {
-      const p = getProject(session, pid);
-      p.model = data.model || null;
-      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid) });
-      safeSend(ws, { type: 'system', projectId: pid, text: p.model ? `Model set to ${p.model}` : 'Model set to default' });
+      const s = getSession(session, pid, sid);
+      s.model = data.model || null;
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
+      safeSend(ws, { type: 'system', projectId: pid, sessionId: sid, text: s.model ? `Model set to ${s.model}` : 'Model set to default' });
     } else if (data.type === 'opencode_info') {
-      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid) });
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
     } else if (data.type === 'project_switch') {
       session.activeProject = pid;
       const p = getProject(session, pid);
       session.cwd = p.cwd || session.cwd;
-      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid) });
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
     } else if (data.type === 'project_config') {
       const p = getProject(session, pid);
       if (data.cwd && typeof data.cwd === 'string') { p.cwd = data.cwd; session.cwd = p.cwd; }
-      if (data.model !== undefined) p.model = data.model || null;
-      if (data.opencodeSession !== undefined) p.opencodeSession = data.opencodeSession || null;
-      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid) });
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
+    } else if (data.type === 'session_config') {
+      const s = getSession(session, pid, sid);
+      if (data.model !== undefined) s.model = data.model || null;
+      if (data.opencodeSession !== undefined) s.opencodeSession = data.opencodeSession || null;
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
     }
   });
   ws.on('close', () => {
     try {
       Object.values(session.projects || {}).forEach((p) => {
-        p.queue = [];
-        if (p.opencodeChild) try { p.opencodeChild.kill('SIGINT'); } catch {}
-        p.opencodeChild = null; p.busy = false;
+        Object.values(p.sessions || {}).forEach((s) => {
+          s.queue = [];
+          if (s.opencodeChild) try { s.opencodeChild.kill('SIGINT'); } catch {}
+          s.opencodeChild = null; s.busy = false;
+        });
       });
     } catch {}
   });

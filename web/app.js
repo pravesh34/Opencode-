@@ -15,25 +15,55 @@ let activeProjectId = null;
 let activeView = 'chat'; // 'chat' | 'terminal' | 'settings'
 let defaultCwd = null;
 
+function migrateProject(p) {
+  if (p && !Array.isArray(p.sessions)) {
+    const s = { id: uid(), name: 'Session 1', model: p.model || '', opencodeSession: p.opencodeSession || null, messages: Array.isArray(p.messages)?p.messages:[] };
+    p.sessions = [s]; p.activeSessionId = s.id;
+    delete p.model; delete p.opencodeSession; delete p.messages;
+  }
+  if (p && (!p.sessions || !p.sessions.length)) {
+    const s = { id: uid(), name: 'Session 1', model: '', opencodeSession: null, messages: [] };
+    p.sessions = [s]; p.activeSessionId = s.id;
+  }
+  if (p && !p.activeSessionId) p.activeSessionId = p.sessions[0].id;
+  return p;
+}
 function loadProjects() {
   try { projects = JSON.parse(localStorage.getItem(PROJ_KEY) || '[]'); } catch { projects = []; }
   if (!Array.isArray(projects)) projects = [];
+  projects = projects.map(migrateProject);
   activeProjectId = localStorage.getItem(ACTIVE_KEY) || (projects[0] && projects[0].id) || null;
 }
 function saveProjects() {
-  try { localStorage.setItem(PROJ_KEY, JSON.stringify(projects.map(p => ({...p, messages: (p.messages||[]).slice(-120)})))); } catch {}
+  try {
+    localStorage.setItem(PROJ_KEY, JSON.stringify(projects.map(p => ({
+      ...p,
+      sessions: (p.sessions||[]).map(s => ({...s, messages: (s.messages||[]).slice(-200)}))
+    }))));
+  } catch {}
   if (activeProjectId) localStorage.setItem(ACTIVE_KEY, activeProjectId);
 }
 function getProject(id) { return projects.find(p => p.id === (id || activeProjectId)); }
+function getActiveSession(p) { p = p || getProject(); if(!p) return null; return (p.sessions||[]).find(s=>s.id===p.activeSessionId) || p.sessions[0] || null; }
+function createSession(p, name) {
+  p = p || getProject(); if(!p) return null;
+  const n = name || ('Session ' + ((p.sessions||[]).length + 1));
+  const s = { id: uid(), name: n, model: '', opencodeSession: null, messages: [] };
+  p.sessions = p.sessions || []; p.sessions.push(s); p.activeSessionId = s.id;
+  saveProjects(); return s;
+}
 function ensureDefaultProject() {
   if (projects.length) return;
-  const p = { id: uid(), name: 'My Project', icon: '📁', color: COLORS[0], cwd: defaultCwd || '', model: '', opencodeSession: null, messages: [] };
+  const sid = uid();
+  const p = { id: uid(), name: 'My Project', icon: '📁', color: COLORS[0], cwd: defaultCwd || '', activeSessionId: sid, sessions: [{ id: sid, name: 'Session 1', model: '', opencodeSession: null, messages: [] }] };
   projects.push(p); activeProjectId = p.id; saveProjects();
 }
 function projectSubtitle(p) {
   const cwd = p.cwd ? p.cwd.replace(/^\/Users\/[^/]+/, '~').split('/').slice(-2).join('/') : 'no folder';
-  const m = p.model ? p.model.split('/').pop() : 'default model';
-  return `${cwd} · ${m}`;
+  const s = getActiveSession(p);
+  const m = s && s.model ? s.model.split('/').pop() : 'default model';
+  const sc = (p.sessions||[]).length;
+  return `${cwd} · ${m}${sc>1 ? ' · '+sc+' sessions' : ''}`;
 }
 
 // ---------- Rendering ----------
@@ -42,7 +72,9 @@ function renderProjectList() {
   const q = ($('#project-search')?.value || '').toLowerCase();
   const items = projects.filter(p => !q || p.name.toLowerCase().includes(q) || (p.cwd||'').toLowerCase().includes(q));
   list.innerHTML = items.map(p => {
-    const last = (p.messages||[]).filter(m=>m.role==='user'||m.role==='assistant').slice(-1)[0];
+    const s = getActiveSession(p);
+    const msgs = (s && s.messages) || [];
+    const last = msgs.filter(m=>m.role==='user'||m.role==='assistant').slice(-1)[0];
     const preview = last ? (last.text||'').replace(/\s+/g,' ').slice(0, 60) : projectSubtitle(p);
     const av = p.icon || (p.name||'P').trim().charAt(0).toUpperCase();
     return `<div class="project-item ${p.id===activeProjectId && activeView==='chat' ? 'active':''}" data-id="${p.id}">
@@ -54,20 +86,56 @@ function renderProjectList() {
 }
 function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function renderMessages(p) {
-  const box = $('#project-messages'); if (!box || !p) return;
-  box.innerHTML = (p.messages||[]).map(m => `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`).join('');
+function renderSessionTabs(p) {
+  p = p || getProject(); const bar = $('#session-tabs'); if (!bar || !p) return;
+  bar.innerHTML = (p.sessions||[]).map(s => `<button class="stab ${s.id===p.activeSessionId?'active':''} ${s.busy?'busy':''}" data-sid="${s.id}"><span class="dot"></span>${escapeHtml(s.name||'Session')}<span class="x" data-del="${s.id}" title="Close session">×</span></button>`).join('');
+  bar.querySelectorAll('.stab').forEach(el => el.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-del]'); if (del) { deleteSession(p.id, del.dataset.del); e.stopPropagation(); return; }
+    switchSession(p.id, el.dataset.sid);
+  }));
+  const s = getActiveSession(p); const sel = $('#session-model');
+  if (sel) sel.value = (s && s.model) || '';
+}
+function renderMessages(p, sid) {
+  const box = $('#project-messages'); if (!box) return;
+  p = p || getProject(); if (!p) { box.innerHTML=''; return; }
+  const s = sid ? (p.sessions||[]).find(x=>x.id===sid) : getActiveSession(p);
+  box.innerHTML = ((s && s.messages)||[]).map(m => `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`).join('');
   box.scrollTop = box.scrollHeight;
 }
-function addProjectMessage(p, role, text, persist=true) {
+function addSessionMessage(p, sid, role, text, persist=true) {
   if (!p) return;
-  if (persist) { p.messages = p.messages || []; p.messages.push({ role, text: String(text) }); if (p.messages.length > 200) p.messages = p.messages.slice(-200); saveProjects(); }
-  if (activeProjectId === p.id && activeView === 'chat') {
+  const s = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p); if (!s) return;
+  if (persist) { s.messages = s.messages || []; s.messages.push({ role, text: String(text) }); if (s.messages.length > 300) s.messages = s.messages.slice(-300); saveProjects(); }
+  if (activeProjectId === p.id && p.activeSessionId === s.id && activeView === 'chat') {
     const box = $('#project-messages'); if (!box) return;
     const el = document.createElement('div'); el.className = 'msg ' + role; el.textContent = String(text);
     box.appendChild(el); box.scrollTop = box.scrollHeight;
   }
   if (role === 'user' || role === 'assistant') renderProjectList();
+}
+// compat wrapper (old calls)
+function addProjectMessage(p, role, text, persist=true) { const s=getActiveSession(p); addSessionMessage(p, s&&s.id, role, text, persist); }
+
+function switchSession(pid, sid) {
+  const p = getProject(pid); if(!p) return;
+  p.activeSessionId = sid; saveProjects();
+  if (activeProjectId===p.id) { renderSessionTabs(p); renderMessages(p, sid); $('#chat-subtitle').textContent = projectSubtitle(p); syncSessionConfig(p, sid); }
+  renderProjectList();
+}
+function deleteSession(pid, sid) {
+  const p = getProject(pid); if(!p) return;
+  if ((p.sessions||[]).length <= 1) { toast('Keep at least one session'); return; }
+  if (!confirm('Close this session? Its history will be removed from this project.')) return;
+  p.sessions = p.sessions.filter(s=>s.id!==sid);
+  if (p.activeSessionId===sid) p.activeSessionId = p.sessions[0].id;
+  saveProjects(); if(activeProjectId===pid){ renderSessionTabs(p); renderMessages(p); }
+  wsSend({type:'opencode_reset', projectId:pid, sessionId:sid}); // best-effort cleanup server state
+  renderProjectList(); toast('Session closed');
+}
+function syncSessionConfig(p, sid) {
+  p = p || getProject(); const s = sid ? (p.sessions||[]).find(x=>x.id===sid) : getActiveSession(p); if(!p||!s) return;
+  wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null, opencodeSession:s.opencodeSession||null});
 }
 
 function setMainView(view) {
@@ -95,12 +163,14 @@ function showChatView() {
   $('#chat-avatar').textContent = av; $('#chat-avatar').style.background = p.color || COLORS[0];
   $('#chat-title').textContent = p.name || 'Project';
   $('#chat-subtitle').textContent = projectSubtitle(p);
+  renderSessionTabs(p);
   renderMessages(p);
   $('#app').classList.add('show-main');
   renderProjectList();
   // sync server to this project's config
   wsSend({ type:'project_switch', projectId: p.id });
-  wsSend({ type:'project_config', projectId: p.id, cwd: p.cwd || defaultCwd || '', model: p.model || null, opencodeSession: p.opencodeSession || null });
+  wsSend({ type:'project_config', projectId: p.id, cwd: p.cwd || defaultCwd || '' });
+  syncSessionConfig(p);
 }
 function selectProject(id) {
   activeProjectId = id; localStorage.setItem(ACTIVE_KEY, id);
@@ -128,8 +198,12 @@ function connectWs() {
   ws.onopen = () => {
     wsBackoff = 1500; setWsPill('Connected','ok');
     wsSend({type:'opencode_models'});
-    const p = getProject(); if (p) { wsSend({type:'project_switch', projectId:p.id}); wsSend({type:'project_config', projectId:p.id, cwd:p.cwd||defaultCwd||'', model:p.model||null, opencodeSession:p.opencodeSession||null}); }
-    else wsSend({type:'opencode_info'});
+    const p = getProject();
+    if (p) {
+      wsSend({type:'project_switch', projectId:p.id});
+      wsSend({type:'project_config', projectId:p.id, cwd:p.cwd||defaultCwd||''});
+      (p.sessions||[]).forEach(s => wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null, opencodeSession:s.opencodeSession||null}));
+    } else wsSend({type:'opencode_info'});
   };
   ws.onclose = () => { setWsPill('Disconnected','bad'); if (!wsIntentionalClose) scheduleWsReconnect(); };
   ws.onerror = () => { setWsPill('Error','bad'); };
@@ -142,14 +216,15 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && (!
 
 function handleServerMsg(j) {
   const pid = j.projectId || activeProjectId;
+  const sid = j.sessionId || (getProject(pid) && getProject(pid).activeSessionId) || 'default';
   const p = pid ? getProject(pid) : getProject();
-  if (j.type==='user' || j.type==='assistant') { if(p) addProjectMessage(p, j.type, j.text); }
-  else if (j.type==='system') { /* toasts handled elsewhere; avoid chat spam */ }
+  if (j.type==='user' || j.type==='assistant') { if(p) addSessionMessage(p, sid, j.type, j.text); }
+  else if (j.type==='system') { /* quiet */ }
   else if (j.type==='terminal') addTerm(j.text);
-  else if (j.type==='opencode_text') { clearSlowTimer(); if(p) addProjectMessage(p, 'assistant', j.text); }
-  else if (j.type==='opencode_event') { /* quiet; queued/busy reflected in info */ }
-  else if (j.type==='opencode_meta') { if(p) addProjectMessage(p, 'system', j.text); }
-  else if (j.type==='opencode_done') { clearSlowTimer(); opencodeCurrentDone = true; }
+  else if (j.type==='opencode_text') { clearSlowTimer(); if(p) appendAssistantStream(p, sid, j.text); }
+  else if (j.type==='opencode_event') { /* quiet */ }
+  else if (j.type==='opencode_meta') { if(p) addSessionMessage(p, sid, 'system', j.text); }
+  else if (j.type==='opencode_done') { clearSlowTimer(); opencodeCurrentDone = true; if(p) finalizeAssistantStream(p, sid); renderSessionTabs(p); }
   else if (j.type==='opencode_info') updateOpenCodeInfo(j);
   else if (j.type==='opencode_models_list') fillModelList(j.models || []);
 }
@@ -169,71 +244,84 @@ function syncSettingsStatus(){ const s=$('#ws-state'); if(s) $('#ws-state-settin
 
 // ---------- OpenCode (per project) ----------
 let opencodeSlowTimer = null, opencodeCurrentDone = true, currentModel = '';
-const streams = {}; // pid -> {el, text}
+const streams = {}; // `${pid}:${sid}` -> {el, text}
 function clearSlowTimer(){ if(opencodeSlowTimer){ clearTimeout(opencodeSlowTimer); opencodeSlowTimer=null; } }
-function appendAssistantStream(p, text) {
+function streamKey(pid,sid){ return pid+':'+(sid||'default'); }
+function appendAssistantStream(p, sid, text) {
   if (!p) return;
-  const pid = p.id; const box = $('#project-messages');
-  if (!streams[pid]) {
+  const sObj = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p);
+  const key = streamKey(p.id, sObj && sObj.id); const box = $('#project-messages');
+  if (!streams[key]) {
     const el = document.createElement('div'); el.className='msg assistant'; el.textContent='';
-    streams[pid] = { el, text: '' };
-    if (activeProjectId===pid && box) { box.appendChild(el); box.scrollTop = box.scrollHeight; }
+    streams[key] = { el, text: '' };
+    if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) { box.appendChild(el); box.scrollTop = box.scrollHeight; }
   }
-  streams[pid].text += String(text);
-  streams[pid].el.textContent = streams[pid].text;
-  if (activeProjectId===pid && box) box.scrollTop = box.scrollHeight;
+  streams[key].text += String(text);
+  streams[key].el.textContent = streams[key].text;
+  if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) box.scrollTop = box.scrollHeight;
 }
-function finalizeAssistantStream(p) {
+function finalizeAssistantStream(p, sid) {
   if (!p) return;
-  const pid = p.id; const s = streams[pid];
-  if (s && s.text) {
-    p.messages = p.messages || []; p.messages.push({ role:'assistant', text: s.text });
-    if (p.messages.length > 200) p.messages = p.messages.slice(-200);
+  const sObj = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p);
+  const key = streamKey(p.id, sObj && sObj.id); const st = streams[key];
+  if (st && st.text && sObj) {
+    sObj.messages = sObj.messages || []; sObj.messages.push({ role:'assistant', text: st.text });
+    if (sObj.messages.length > 300) sObj.messages = sObj.messages.slice(-300);
     saveProjects(); renderProjectList();
   }
-  if (s && activeProjectId!==pid && s.el && s.el.parentNode) s.el.parentNode.removeChild(s.el);
-  delete streams[pid];
+  delete streams[key];
 }
 function updateOpenCodeInfo(j) {
   const pid = j.projectId || activeProjectId;
+  const sid = j.sessionId;
   const p = pid ? getProject(pid) : null;
   if (p) {
-    if (j.session !== undefined) p.opencodeSession = j.session || null;
-    if (j.model !== undefined) p.model = j.model || '';
     if (j.cwd) p.cwd = j.cwd;
-    saveProjects();
+    const s = sid ? (p.sessions||[]).find(x=>x.id===sid) : getActiveSession(p);
+    if (s) {
+      if (j.session !== undefined) s.opencodeSession = j.session || null;
+      if (j.model !== undefined) s.model = j.model || '';
+      if (j.busy !== undefined) s.busy = !!j.busy;
+      saveProjects();
+    }
     if (activeProjectId === p.id) {
       $('#chat-subtitle').textContent = projectSubtitle(p);
-      if ($('#project-modal-back').classList.contains('show')) $('#proj-session-id').textContent = p.opencodeSession || 'new session';
+      renderSessionTabs(p);
+      if ($('#project-modal-back').classList.contains('show') && s) $('#proj-session-id').textContent = s.opencodeSession || 'new session';
     }
     renderProjectList();
   }
 }
 function fillModelList(models) {
-  const sel = $('#opencode-model'); if(!sel) return;
-  const p = getProject(); const prev = sel.value || (p && p.model) || currentModel;
-  sel.innerHTML = '<option value="">Default (auto)</option>' + models.map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
-  sel.value = prev || '';
+  const opts = '<option value="">Default (auto)</option>' + models.map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+  ['#opencode-model','#session-model'].forEach(selId => {
+    const sel = $(selId); if(!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = opts; sel.value = prev || '';
+  });
+  // ensure session bar reflects active
+  const p=getProject(); const s=getActiveSession(p); if($('#session-model')) $('#session-model').value = (s&&s.model)||'';
 }
 
 $('#opencode-form').addEventListener('submit', e => {
   e.preventDefault();
   const text = $('#opencode-input').value; if(!text.trim()) return;
   const p = getProject(); if(!p){ toast('Create a project first'); return; }
-  addProjectMessage(p, 'user', text);
+  const s = getActiveSession(p); if(!s){ toast('Create a session first'); return; }
+  addSessionMessage(p, s.id, 'user', text);
   opencodeCurrentDone = false;
   clearSlowTimer();
-  opencodeSlowTimer = setTimeout(() => { if(!opencodeCurrentDone && activeProjectId===p.id) addProjectMessage(p,'system','Still running — first reply can take 20–60s'); }, 20000);
+  opencodeSlowTimer = setTimeout(() => { if(!opencodeCurrentDone && activeProjectId===p.id) addSessionMessage(p,s.id,'system','Still running — first reply can take 20–60s'); }, 20000);
   if (ws && ws.readyState === WebSocket.OPEN) {
-    wsSend({type:'opencode_prompt', projectId:p.id, text});
-  } else { clearSlowTimer(); addProjectMessage(p,'assistant','(offline) Start the gateway server to use OpenCode.'); }
+    wsSend({type:'opencode_prompt', projectId:p.id, sessionId:s.id, text});
+  } else { clearSlowTimer(); addSessionMessage(p,s.id,'assistant','(offline) Start the gateway server to use OpenCode.'); }
   $('#opencode-input').value = '';
 });
-$('#opencode-reset').addEventListener('click', () => {
-  const p = getProject(); if(!p) return;
-  if (ws && ws.readyState === WebSocket.OPEN) wsSend({type:'opencode_reset', projectId:p.id});
-  p.opencodeSession = null; p.messages=[]; saveProjects();
-  renderMessages(p); renderProjectList(); toast('New session for ' + p.name);
+const ocReset = $('#opencode-reset'); if (ocReset) ocReset.addEventListener('click', () => {
+  const p = getProject(); const s = getActiveSession(p); if(!p||!s) return;
+  if (ws && ws.readyState === WebSocket.OPEN) wsSend({type:'opencode_reset', projectId:p.id, sessionId:s.id});
+  s.opencodeSession = null; s.messages=[]; saveProjects();
+  renderMessages(p); renderSessionTabs(p); renderProjectList(); toast('Session reset');
 });
 
 // ---------- Terminal ----------
@@ -258,18 +346,21 @@ function openProjectModal(id) {
   const p = id ? getProject(id) : null;
   const isNew = !p;
   modalProjectId = isNew ? null : p.id;
-  const proj = p || { name:'New Project', icon:'📁', color:COLORS[projects.length % COLORS.length], cwd: defaultCwd||'', model:'', opencodeSession:null };
+  const s = p ? getActiveSession(p) : null;
+  const proj = p || { name:'New Project', icon:'📁', color:COLORS[projects.length % COLORS.length], cwd: defaultCwd||'' };
   $('#modal-heading').textContent = isNew ? 'New project' : 'Project settings';
   $('#proj-name').value = proj.name || '';
   $('#proj-icon').value = proj.icon && proj.icon.length <= 4 ? proj.icon : '';
   $('#proj-cwd').value = proj.cwd || defaultCwd || '';
-  $('#proj-session-id').textContent = proj.opencodeSession || 'new session';
+  $('#proj-session-id').textContent = (s && s.opencodeSession) || 'new session';
   $('#proj-delete').style.display = isNew ? 'none' : '';
+  // relabel session buttons for non-destructive behavior
+  const nb = $('#proj-new-session'); if (nb) nb.textContent = 'Add session';
+  const rb = $('#proj-reset-session'); if (rb) rb.style.display = 'none';
   renderSwatches(proj.color || COLORS[0]);
   renderAvatarPreview(proj);
-  // ensure models loaded
   if (ws && ws.readyState===WebSocket.OPEN) wsSend({type:'opencode_models'});
-  setTimeout(()=>{ const sel=$('#opencode-model'); if(sel) sel.value = proj.model || ''; }, 50);
+  setTimeout(()=>{ const sel=$('#opencode-model'); if(sel) sel.value = (s && s.model) || ''; }, 50);
   $('#project-modal-back').classList.add('show');
 }
 function closeProjectModal(){ $('#project-modal-back').classList.remove('show'); modalProjectId=null; }
@@ -293,16 +384,19 @@ $('#proj-save').addEventListener('click', () => {
   const icon = $('#proj-icon').value.trim();
   const color = ($('#proj-swatches .swatch.sel')||{}).dataset?.color || COLORS[0];
   const cwd = $('#proj-cwd').value.trim() || defaultCwd || '';
-  const model = $('#opencode-model').value || '';
+  const model = $('#opencode-model') ? ($('#opencode-model').value || '') : '';
   if (modalProjectId) {
     const p = getProject(modalProjectId); if(!p) return;
-    Object.assign(p, { name, icon: icon || name.charAt(0).toUpperCase(), color, cwd, model });
+    Object.assign(p, { name, icon: icon || name.charAt(0).toUpperCase(), color, cwd });
+    const s = getActiveSession(p); if (s) s.model = model;
     saveProjects();
-    wsSend({type:'project_config', projectId:p.id, cwd, model: model||null});
+    wsSend({type:'project_config', projectId:p.id, cwd});
+    if (s) wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model: model||null});
     if (activeProjectId===p.id) showChatView(); else renderProjectList();
     toast('Project saved');
   } else {
-    const p = { id: uid(), name, icon: icon || name.charAt(0).toUpperCase(), color, cwd, model, opencodeSession: null, messages: [] };
+    const sid = uid();
+    const p = { id: uid(), name, icon: icon || name.charAt(0).toUpperCase(), color, cwd, activeSessionId: sid, sessions: [{ id: sid, name: 'Session 1', model, opencodeSession: null, messages: [] }] };
     projects.unshift(p); activeProjectId = p.id; saveProjects();
     renderProjectList(); showChatView();
     toast('Project created');
@@ -314,11 +408,10 @@ $('#project-modal-back').addEventListener('click', (e)=>{ if(e.target.id==='proj
 $('#proj-new-session').addEventListener('click', () => {
   if (!modalProjectId) { $('#proj-session-id').textContent='new session'; return; }
   const p = getProject(modalProjectId); if(!p) return;
-  p.opencodeSession = null; p.messages=[]; saveProjects();
+  const s = createSession(p);
   $('#proj-session-id').textContent = 'new session';
-  if (ws && ws.readyState===WebSocket.OPEN) wsSend({type:'opencode_reset', projectId:p.id});
-  if (activeProjectId===p.id) renderMessages(p);
-  toast('New session');
+  if (activeProjectId===p.id) { renderSessionTabs(p); renderMessages(p); showChatView(); }
+  renderProjectList(); toast('Session added');
 });
 $('#proj-reset-session').addEventListener('click', () => { $('#proj-new-session').click(); });
 $('#proj-delete').addEventListener('click', () => {
@@ -374,6 +467,8 @@ $('#files-up').addEventListener('click', ()=>{ if(filesCwd) loadFileList(filesCw
 $('#files-refresh').addEventListener('click', ()=>loadFileList(filesCwd));
 $('#back-files').addEventListener('click', backToList);
 $('#nav-files').addEventListener('click', ()=>setMainView('files'));
+const sessAdd = $('#session-add'); if (sessAdd) sessAdd.addEventListener('click', () => { const p=getProject(); if(!p) return; createSession(p); renderSessionTabs(p); renderMessages(p); syncSessionConfig(p); renderProjectList(); toast('New session added'); });
+const sessModel = $('#session-model'); if (sessModel) sessModel.addEventListener('change', () => { const p=getProject(); const s=getActiveSession(p); if(!p||!s) return; s.model = sessModel.value||''; saveProjects(); wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null}); $('#chat-subtitle').textContent = projectSubtitle(p); renderProjectList(); toast(s.model ? 'Model set' : 'Model: default'); });
 
 // ---------- Wiring ----------
 $('#new-project-btn').addEventListener('click', ()=>openProjectModal(null));

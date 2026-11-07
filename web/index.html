@@ -42,9 +42,13 @@
         <span id="ws-state" class="pill">…</span>
         <button class="icon-btn" id="project-settings-btn" title="Project settings">⚙</button>
       </div>
+      <div class="session-bar" id="session-bar">
+        <div class="session-tabs" id="session-tabs"></div>
+        <button class="icon-btn small" id="session-add" title="New session">＋</button>
+        <select id="session-model" class="session-model" title="Model for this session"><option value="">Default model</option></select>
+      </div>
       <div id="project-messages"></div>
       <form class="composer" id="opencode-form">
-        <button type="button" class="btn secondary" id="opencode-reset" title="New session">New</button>
         <input id="opencode-input" placeholder="Message OpenCode…" autocomplete="off"/>
         <button class="btn" type="submit">Send</button>
       </form>
