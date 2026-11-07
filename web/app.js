@@ -67,7 +67,6 @@ function connectWs() {
   ws.onopen = () => {
     wsBackoff = 1500;
     $('#ws-state').textContent = 'Connected'; $('#ws-state').className='pill ok';
-    toast('Connected');
     ws.send(JSON.stringify({type:'opencode_models'}));
     ws.send(JSON.stringify({type:'opencode_info'}));
   };
@@ -79,7 +78,7 @@ function connectWs() {
   ws.onmessage = (e) => {
     let j; try { j = JSON.parse(e.data); } catch { addMsg('assistant', String(e.data)); return; }
     if (j.type==='user' || j.type==='assistant') addMsg(j.type, j.text);
-    else if (j.type==='system') addMsg('system', j.text);
+    else if (j.type==='system') { const t = String(j.text); if (!t.startsWith('OpenCode ready:')) toast(t); }
     else if (j.type==='terminal') addTerm(j.text);
     else if (j.type==='opencode_text') { clearSlowTimer(); addOpenCode('assistant', j.text); }
     else if (j.type==='opencode_event') addOpenCode('system', '· ' + j.text);

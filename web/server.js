@@ -222,7 +222,6 @@ function handle(ws) {
   const session = { cwd: PROJECT_ROOT, opencodeSession: null, opencodeChild: null, model: null, queue: [], busy: false };
   const label = process.platform === 'darwin' ? 'Terminal (Mac)' : 'Terminal (Termux)';
   safeSend(ws, { type: 'terminal', text: `${label} · ${SHELL_BIN} · cwd ${session.cwd} · try "pwd", "ls", "opencode run \\"hi\\""` });
-  safeSend(ws, { type: 'system', text: OPENCODE ? `OpenCode ready: ${OPENCODE}` : 'OpenCode CLI not found (demo mode)' });
   safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session) });
 
   // heartbeat so idle proxies don't cut the socket
