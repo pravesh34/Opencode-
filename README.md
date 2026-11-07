@@ -1,73 +1,88 @@
-# Open Gateway (Kotlin Android)
+# Open Gateway — Standalone v2 (arm64, no Termux)
 
-A Kotlin Android app (WebView) that loads the Open Gateway web UI (Next.js PWA) so you can install it as an APK.
+<img src="APP%20Logo.png" alt="Open Gateway" width="120" />
 
-## Local web app (for testing)
+Native Jetpack Compose Android app with the **opencode CLI embedded**. One APK, no Termux, no WebView, no Node gateway. Chat with opencode (any provider/model), a real terminal, file browsing/editing, and per-project sessions — all on-device.
 
-The repo now ships a local web app in `web/` that the wrapper loads:
+- **Package:** `com.opengateway.app` · **versionCode** 10 · **versionName** 2.0.0
+- **ABI:** arm64-v8a only (99% of modern phones)
+- **minSdk** 26 · **targetSdk** 35
+
+## What's inside
+
+| Piece | Details |
+|---|---|
+| UI | Jetpack Compose + Material 3 (Chat / Terminal / Files / Settings) |
+| opencode | v1.19.5 `linux-arm64-musl` tarball from [anomalyco/opencode](https://github.com/anomalyco/opencode) releases, fetched in CI, never committed |
+| busybox | Alpine `busybox-static-1.36.1-r31` (aarch64), extracted from the official `.apk` |
+| Workspace | `filesDir/workspace/` — `openCodeRunner` runs `opencode run --format json --model <provider>/<model>` |
+
+App flow: `MainActivity` → `AppRoot` (Chat | Terminal | Files | Settings) → `AssetInstaller` extracts `assets/bin/arm64-v8a/{opencode,busybox}` to `filesDir/bin/` on first launch → `OpenCodeRunner` executes it and streams JSON output into Chat.
+
+See [README-STANDALONE-v2.md](README-STANDALONE-v2.md) for architecture notes, provider list, and design history.
+
+## Download / install
+
+Every push to any branch triggers **Android APK (Standalone v2 - arm64 only)** in GitHub Actions.
+
+Artifacts (Actions tab → latest run → **Artifacts**):
+
+- `app-debug-apk` — debug-signed APK, install directly on an arm64 phone (retention 30 days)
+- `app-release-aab` — release AAB for Play Console (retention 90 days)
+
+Or with the GitHub CLI:
 
 ```bash
-cd web
-npm install
-npm start
-# http://localhost:3000  ·  WS ws://localhost:8080/ws (also localhost:3000/ws)
+gh run download <run-id> -n app-debug-apk
 ```
 
-It includes Home, Chat, Terminal and Settings tabs and is the default target for emulator runs (`http://10.0.2.2:3000` = host `localhost`). See `web/README.md`.
+Pushing a `v*` tag also attaches both files to a GitHub Release.
 
-## Configure URL
-
-Edit `gradle.properties` (build-time default):
-
-```properties
-GATEWAY_URL=http://10.0.2.2:3000
-```
-
-Or change it at runtime in the app: **Menu → Settings → Gateway URL** (persisted in `SharedPreferences`, survives rebuilds). For local dev you can use `http://<device-ip>:3000` (cleartext enabled).
-
-## Build APK (needs Android SDK + JDK 17)
-
-On a machine with Android Studio/SDK:
+## Build locally (Android Studio, arm64 or x86_64 host)
 
 ```bash
-# from this folder
-gradle wrapper   # if you want ./gradlew
+# 1. Fetch the pinned binaries (same as CI — never commit them)
+mkdir -p app/src/main/assets/bin/arm64-v8a
+curl -fL "https://github.com/anomalyco/opencode/releases/download/v1.19.5/opencode-linux-arm64-musl.tar.gz" | tar -xz -C app/src/main/assets/bin/arm64-v8a/ opencode
+curl -fL "https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/busybox-static-1.36.1-r31.apk" -o /tmp/bb.apk
+tar -xzf /tmp/bb.apk -C /tmp bin/busybox.static && cp /tmp/bin/busybox.static app/src/main/assets/bin/arm64-v8a/busybox
+chmod +x app/src/main/assets/bin/arm64-v8a/{opencode,busybox}
+
+# 2. Build
+gradle wrapper   # once, if gradlew is missing
 ./gradlew assembleDebug
 # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Release builds use R8 + resource shrinking (`isMinifyEnabled = true`, `app/proguard-rules.pro`).
+Requires JDK 17. Release config uses R8 + resource shrinking.
 
-## Build APK via GitHub Actions
+## Providers & keys
 
-1. Push to GitHub.
-2. Open the **Actions** tab → run **Android APK** (or push a commit). You can pass a `gateway_url` override via **Run workflow** inputs.
-3. Download the `app-debug-apk` artifact.
+All models are invoked through the embedded `opencode` CLI (`opencode run --model <provider>/<model>`):
 
-## What's improved (v1.1.0)
+- `opencode/…` — free tier, no key needed
+- `anthropic/claude-sonnet-4-5` — needs `ANTHROPIC_API_KEY`
+- `openai/gpt-4o` — needs `OPENAI_API_KEY`
+- `openrouter/…`, `google/…`, or `other/<model>`
 
-- **Toolbar & menu** (Reload, Home, Back, Forward, Share, Copy link, Open in browser, Settings)
-- **URL settings** — in-app editor, persisted, with clear-cache action
-- **Error & offline UX** — dedicated error view with Retry/Settings, offline banner + auto-retry, `onReceivedHttpError` and SSL-error dialog (proceed/cancel/view cert)
-- **WebView features** — file upload (content + camera), `DownloadManager` downloads, long-press link menu (open/share/copy), safe browsing, zoom enabled, FileProvider
-- **Pull-to-refresh + loading bar** — themed spinner, thin accent progress bar, `onPause/onResume` lifecycle, state save/restore, deep-link & Send-intent handling
-- **Build** — version 1.1.0 (code 2), release minify, `lifecycle-runtime-ktx`, CI caching & gateway override
+Keys are stored in DataStore (Settings screen) and forwarded to the opencode process. GitHub auth (Settings) supports PAT paste for private model access.
 
-## Tunneling (for the web gateway)
+## CI notes
 
-The web gateway must be reachable by the phone. If using the Next.js app on another device:
+- Workflow: `.github/workflows/android.yml` — runs on all branch pushes, tags `v*`, and manual dispatch
+- Binaries are pinned (version + Alpine release) and gitignored; CI fetches them fresh each run
+- Known cosmetic warnings: Node.js 20 action deprecation, `setup-java@v4` → v5, `ubuntu-latest` migration
 
-```bash
-# terminal running open-gateway web + gateway
-npx cloudflared tunnel --url http://localhost:3000
+## Repo layout
+
 ```
-
-Use the printed `https://....trycloudflare.com` as `GATEWAY_URL`. **Note:** the chat/terminal WebSocket (`:8080`) also needs to be reachable; for full functionality, proxy WS through the same origin/tunnel (the included `web/` server does this) or tunnel `:8080` separately and configure the web app's `NEXT_PUBLIC_GATEWAY_WS` accordingly.
-
-## Termux prerequisites (if building/pushing from Termux)
-
-```bash
-pkg update
-pkg install git openjdk-17
-# Android SDK/Gradle setup is required separately to build APK locally.
+app/                        # Compose app module (arm64 only)
+  src/main/java/com/opengateway/app/
+    MainActivity.kt         # Compose entry
+    AssetInstaller.kt       # extracts bundled opencode/busybox on first run
+    OpenCodeRunner.kt       # runs opencode CLI, streams JSON to Chat
+    ui/                     # ChatScreen, TerminalScreen, FilesScreen, SettingsScreen
+  src/main/AndroidManifest.xml
+.github/workflows/android.yml
+README-STANDALONE-v2.md     # design doc / provider notes
 ```
