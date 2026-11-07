@@ -77,7 +77,7 @@ class GatewayService : Service() {
             pb.redirectOutput(log)
             process = pb.start()
             running = true
-            Log.i(TAG, "gateway started with ${node.absolutePath} (pid ${process?.pid()})")
+            Log.i(TAG, "gateway started with ${node.absolutePath}")
             // poll health briefly so the notification reflects readiness
             Thread {
                 repeat(10) {

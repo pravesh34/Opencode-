@@ -29,8 +29,8 @@ object GatewayRuntime {
     fun serverJs(context: Context): File = File(gatewayDir(context), "server.js")
 
     /**
-     * Copy assets/gateway/* into filesDir/gateway (re-extracts on version bump).
-     * Returns true if server.js is present afterwards.
+     * Copy the gateway files from assets into filesDir/gateway (re-extracts
+     * on version bump). Returns true if server.js is present afterwards.
      */
     fun extractIfNeeded(context: Context): Boolean {
         val dir = gatewayDir(context)
