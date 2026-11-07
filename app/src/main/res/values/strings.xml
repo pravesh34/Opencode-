@@ -38,5 +38,5 @@
     <string name="menu_opencode">Open OpenCode tab</string>
     <string name="termux_missing">Termux app not installed — opened Terminal tab instead</string>
     <string name="opencode_setup_title">OpenCode setup (Android)</string>
-    <string name="opencode_setup_body">This app embeds a native terminal (Termux terminal libraries) and connects to OpenCode via the local gateway.\n\nFor a full on-device environment: install Termux, run the gateway server, and install/configure OpenCode. Use 127.0.0.1:3000 as the Gateway URL when running locally on this device.</string>
+    <string name="opencode_setup_body">No typing required. 1) Copy the installer command. 2) Open Termux, paste &amp; run it — it installs Node, downloads this repo, and starts the gateway on :3000. 3) Set Gateway to 127.0.0.1:3000 and reload. The in-app native terminal works offline without any of this.</string>
 </resources>

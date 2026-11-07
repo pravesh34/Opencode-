@@ -6,9 +6,9 @@
         <TextView android:id="@+id/setup_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:textSize="14sp" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="@string/opencode_setup_body" android:textSize="14sp" />
         <TextView android:id="@+id/setup_commands" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="#111111" android:textColor="#dddddd" android:padding="12dp" android:textIsSelectable="true" android:fontFamily="monospace" android:textSize="12sp" />
-        <Button android:id="@+id/btn_copy_cmds" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Copy setup commands" />
-        <Button android:id="@+id/btn_open_termux" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Open Termux app" />
-        <Button android:id="@+id/btn_native_terminal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Open native terminal (in-app)" />
-        <Button android:id="@+id/btn_set_localhost" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Set Gateway to 127.0.0.1:3000 (on-device)" />
+        <Button android:id="@+id/btn_copy_cmds" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="1. Copy installer command" />
+        <Button android:id="@+id/btn_open_termux" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="2. Open Termux (paste &amp; run)" />
+        <Button android:id="@+id/btn_set_localhost" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="3. Set Gateway to 127.0.0.1:3000" />
+        <Button android:id="@+id/btn_native_terminal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Native terminal (in-app) — offline test" />
     </LinearLayout>
 </ScrollView>

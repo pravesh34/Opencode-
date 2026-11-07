@@ -13,17 +13,10 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class OpenCodeSetupActivity : AppCompatActivity() {
-    private val setupCmds = """
-# In Termux (on this Android device):
-pkg update -y && pkg install -y nodejs git
-# Get this project (or copy web/ folder), then:
-cd ~/Opencode-/web  # adjust path
-npm install
-node server.js
-# OpenCode (if available in your environment):
-# opencode --version
-# Then in this app set Gateway URL to: http://127.0.0.1:3000
-""".trimIndent()
+    // One-line installer: paste this into Termux and run it. It installs Node,
+    // clones this repo, installs web deps, and starts the gateway on :3000.
+    private val setupCmds =
+        "curl -fsSL https://raw.githubusercontent.com/pravesh34/Opencode-/main/setup-termux.sh | bash"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,9 +25,9 @@ node server.js
         findViewById<TextView>(R.id.setup_commands).text = setupCmds
 
         val termuxInstalled = isAppInstalled("com.termux")
-        status.text = "Termux installed: ${if (termuxInstalled) "yes" else "no"}\n" +
-            "Native terminal (in-app): available (Termux terminal libs embedded)\n" +
-            "OpenCode: configure via gateway (local 127.0.0.1:3000) or host server"
+        status.text = "Termux installed: ${if (termuxInstalled) "yes — tap 'Open Termux' and paste the command" else "no — install Termux first, then tap 'Open Termux'"}\n" +
+            "Native terminal (in-app): available — works offline, no setup needed\n" +
+            "OpenCode: runs via the gateway you start with the installer (127.0.0.1:3000)"
 
         findViewById<Button>(R.id.btn_copy_cmds).setOnClickListener {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
