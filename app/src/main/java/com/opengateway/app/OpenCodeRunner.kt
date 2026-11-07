@@ -94,8 +94,10 @@ class OpenCodeRunner(private val ctx: Context) {
             val text = part?.optString("text", "")
             if (!text.isNullOrBlank()) emit(text)
             // Phase 4: cost + tool call events (displayed inline as [cost]/[tool])
-            val cost = part?.optDouble("cost", Double.NaN)
-            if (!cost.isNaN()) emit("[cost $cost]")
+            try {
+              val cost = part?.optDouble("cost")
+              if (cost != null && !cost.isNaN()) emit("[cost $cost]")
+            } catch (_: Exception) {}
             val type = obj.optString("type", "")
             if (type.contains("tool", ignoreCase = true)) {
               val tool = part?.optString("tool", type)
