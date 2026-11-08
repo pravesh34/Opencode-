@@ -137,23 +137,12 @@ function renderMessages(p, sid) {
   if (!msgs.length) {
     box.innerHTML = '';
   } else {
-    box.innerHTML = msgs.map(m => {
-      if (m.role === 'assistant') {
-        return `<div class="msg assistant">${escapeHtml(m.text)}<div class="msg-actions">
-          <button class="btn small secondary" type="button" data-act="accept">Accept</button>
-          <button class="btn small secondary" type="button" data-act="undo">Undo</button>
-        </div></div>`;
-      }
-      return `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`;
-    }).join('');
+    // AI replies apply immediately — no Accept/Undo buttons. Revert by asking in chat.
+    box.innerHTML = msgs.map(m => `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`).join('');
   }
   box.scrollTop = box.scrollHeight;
 }
-// Accept = ask OpenCode to commit; Undo = ask it to revert. Real prompts, not fake buttons.
-$('#project-messages')?.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-act]'); if (!btn) return;
-  sendPrompt(btn.dataset.act === 'accept' ? 'Commit the current change with a good message.' : 'Undo your last change.');
-});
+// (No Accept/Undo buttons — changes apply directly; revert by asking in chat.)
 function addSessionMessage(p, sid, role, text, persist=true) {
   if (!p) return;
   const s = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p); if (!s) return;
