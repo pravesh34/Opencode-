@@ -766,6 +766,7 @@ async function openFilePreview(filePath) {
 $('#files-up').addEventListener('click', ()=>{ if(filesCwd) loadFileList(filesCwd.replace(/\/[^/]+\/?$/,'')||'/'); });
 $('#files-refresh').addEventListener('click', ()=>loadFileList(filesCwd));
 $('#back-files').addEventListener('click', backToList);
+$('#nav-home')?.addEventListener('click', backToList);
 $('#nav-files').addEventListener('click', ()=>setMainView('files'));
 const sessAdd = $('#session-add'); if (sessAdd) sessAdd.addEventListener('click', () => { const p=getProject(); if(!p) return; createSession(p); renderSessionTabs(p); renderMessages(p); syncSessionConfig(p); renderProjectList(); toast('New session added'); });
 const sessModel = $('#session-model'); if (sessModel) sessModel.addEventListener('change', () => { const p=getProject(); const s=getActiveSession(p); if(!p||!s) return; s.model = sessModel.value||''; saveProjects(); wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null}); $('#chat-subtitle').textContent = chatSubtitle(p); renderProjectList(); toast(s.model ? 'Model: ' + s.model.split('/').pop() : 'Model: default'); });
