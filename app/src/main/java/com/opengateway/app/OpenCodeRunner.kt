@@ -205,7 +205,7 @@ class OpenCodeRunner(private val ctx: Context) {
       sb.append("(memfd unavailable in this build)\n")
       return sb.toString()
     }
-    try {
+    return try {
       val lines = runViaMemfdSelfTest()
       sb.append(lines)
       sb.toString()

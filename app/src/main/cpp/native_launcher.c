@@ -1,10 +1,12 @@
-#define _GNU_SOURCE
+#define _GNU_SOURCE 1
+#define _DEFAULT_SOURCE 1
 #include <jni.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/poll.h>
+#include <sys/syscall.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
@@ -12,12 +14,23 @@
 #include <signal.h>
 #include <stdlib.h>
 
+/* Fallbacks when the platform headers don't declare these. */
+#ifndef SYS_memfd_create
+#define SYS_memfd_create __NR_memfd_create
+#endif
+#ifndef __NR_memfd_create
+#define __NR_memfd_create 279
+#endif
+static inline int my_memfd_create(const char *name) {
+    return (int)syscall(SYS_memfd_create, name, 0u);
+}
+
 #define MAX_ARGS 64
 
 static int copyToMemfd(const char *path, const char *name, int *outFd) {
     int src = open(path, O_RDONLY);
     if (src < 0) return -1;
-    int dst = memfd_create(name, 0);
+    int dst = my_memfd_create(name);
     if (dst < 0) { close(src); return -1; }
     if (fchmod(dst, 0755) != 0) { close(src); close(dst); return -1; }
     static char buf[1 << 20];
@@ -124,7 +137,8 @@ JNIEXPORT jstring JNICALL Java_com_opengateway_app_MemfdRunner_execAndCapture(
         /* The loader itself is exec'd from memory (PIE, allowed).
            It then loads the opencode binary from its memfd path. */
         alarm(600); /* 10 min watchdog, like the Java side */
-        fexecve(loaderFd, argv, envp);
+        /* exec the loader via its /proc/self/fd path (unambiguous memfd exec) */
+        execve(loaderMemfd, argv, envp);
         _exit(127);
     }
 
