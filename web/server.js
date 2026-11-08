@@ -382,8 +382,19 @@ function runOpencodeNow(ws, session, pid, sid, message) {
   console.log('[opencode]', id, ss, args.join(' ').slice(0, 180));
   const child = spawn(OPENCODE, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
   let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGINT'); } catch {} }, 5 * 60 * 1000);
+  const startedAt = Date.now();
+  const elapsed = () => Math.round((Date.now() - startedAt) / 1000);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try { child.kill('SIGINT'); } catch {}
+    setTimeout(() => { try { child.kill('SIGTERM'); } catch {} }, 5000);
+  }, 5 * 60 * 1000);
   timer.unref && timer.unref();
+  // liveness heartbeat so the client never looks "stuck"
+  const heartbeat = setInterval(() => {
+    safeSend(ws, { type: 'opencode_event', projectId: id, sessionId: ss, text: `⏳ still working… ${elapsed()}s` });
+  }, 15000);
+  heartbeat.unref && heartbeat.unref();
   s.opencodeChild = child;
   let buf = '';
   let stderrBuf = '';
@@ -414,9 +425,18 @@ function runOpencodeNow(ws, session, pid, sid, message) {
       } catch { gotText = true; if (line) safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: line }); }
     }
   });
-  child.stderr.on('data', (d) => { stderrBuf += d.toString(); });
+  child.stderr.on('data', (d) => {
+    const t = d.toString();
+    stderrBuf += t;
+    // mirror real stderr lines so errors are visible instead of a frozen screen
+    for (const ln of t.split('\n')) {
+      const s2 = ln.trim();
+      if (s2) safeSend(ws, { type: 'opencode_event', projectId: id, sessionId: ss, text: `! ${s2.slice(0, 160)}` });
+    }
+  });
   function finish(code) {
     clearTimeout(timer);
+    clearInterval(heartbeat);
     s.opencodeChild = null;
     s.busy = false;
     if (buf.trim() && !gotText) try { const ev = JSON.parse(buf.trim()); if (ev.part?.text) safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: ev.part.text }); } catch { safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: buf.trim() }); }

@@ -259,6 +259,7 @@ input[type=text],input:not([type]),select{width:100%;background:var(--panel2);bo
 .toast.show{opacity:1}
 
 /* ChatGPT-style: thinking/tool steps in assistant cards, stop/priority, keys */
+.msg .elapsed{font-size:12px;color:var(--muted);margin-bottom:2px}
 .msg .steps{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
 .msg .steps summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ai)}
 .msg .steps pre{white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;margin:6px 0 0;font-size:12px;line-height:1.55;color:var(--muted)}

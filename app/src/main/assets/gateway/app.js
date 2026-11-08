@@ -315,7 +315,14 @@ function setMainView(view) {
   $('#nav-settings').classList.toggle('active', view==='settings');
   $$('#chat-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === view));
   if (view !== 'chat') { $$('.project-item').forEach(el=>el.classList.remove('active')); $('#app').classList.add('show-main'); }
-  if (view === 'terminal') { const s = $('#ws-state'); if (s) $('#ws-state-term').textContent = s.textContent, $('#ws-state-term').className = s.className; }
+  if (view === 'terminal') {
+    const s = $('#ws-state'); if (s) { $('#ws-state-term').textContent = s.textContent; $('#ws-state-term').className = s.className; }
+    // open the terminal inside the active project's folder (same place OpenCode runs)
+    const p = getProject();
+    const cwd = (p && p.cwd) || defaultCwd || '';
+    if (cwd) { $('#term-subtitle').textContent = cwd.replace(/^\/Users\/[^/]+/, '~'); runTermCmd(`cd "${cwd.replace(/"/g, '\\"')}"`); }
+    else $('#term-subtitle').textContent = 'Host shell · cwd tracked';
+  }
   if (view === 'settings') syncSettingsStatus();
   if (view === 'files') openFileExplorer();
   if (view === 'preview') loadPreview();
@@ -446,16 +453,23 @@ function appendAssistantStream(p, sid, text) {
   const key = streamKey(p.id, sObj && sObj.id); const box = $('#project-messages');
   if (!streams[key]) {
     const el = document.createElement('div'); el.className='msg assistant';
-    el.innerHTML = '<details class="steps" style="display:none"><summary>💭 Thinking…</summary><pre class="steps-log"></pre></details><div class="body"></div>';
-    streams[key] = { el, text: '', steps: [] };
+    el.innerHTML = '<div class="elapsed"></div><details class="steps" style="display:none"><summary>💭 Thinking…</summary><pre class="steps-log"></pre></details><div class="body"></div>';
+    streams[key] = { el, text: '', steps: [], startedAt: Date.now() };
     if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) { box.appendChild(el); box.scrollTop = box.scrollHeight; }
+  }
+  { // live elapsed timer so a waiting reply never looks frozen
+    const st = streams[key]; const el = st.el.querySelector('.elapsed');
+    const tick = () => { if (el) el.textContent = '⏳ ' + Math.round((Date.now() - st.startedAt) / 1000) + 's · working… tap ■ to stop'; };
+    tick();
+    clearInterval(st.tickId); st.tickId = setInterval(tick, 1000);
   }
   streams[key].text += String(text);
   const body = streams[key].el.querySelector('.body'); if (body) body.textContent = streams[key].text;
   if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) box.scrollTop = box.scrollHeight;
 }
 function appendStep(p, sid, text) {
-  if (!p || !text) return;
+  if (!p || typeof text !== 'string') return;
+  if (text.startsWith('⏳ still working')) return; // heartbeat — elapsed timer already shows it
   const sObj = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p);
   const key = streamKey(p.id, sObj && sObj.id);
   let st = streams[key];
@@ -472,6 +486,7 @@ function finalizeAssistantStream(p, sid) {
   if (!p) return;
   const sObj = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p);
   const key = streamKey(p.id, sObj && sObj.id); const st = streams[key];
+  if (st) { clearInterval(st.tickId); const el = st.el.querySelector('.elapsed'); if (el) el.textContent = ''; }
   if (st && st.text && sObj) {
     sObj.messages = sObj.messages || []; sObj.messages.push({ role:'assistant', text: st.text, time: Date.now() });
     if (sObj.messages.length > 300) sObj.messages = sObj.messages.slice(-300);
