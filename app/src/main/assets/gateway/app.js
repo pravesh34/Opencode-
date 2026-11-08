@@ -434,12 +434,21 @@ function setMainView(view, opts={}) {
     pushNavState({ view: 'chat', projectId: activeProjectId });
   }
 }
+function applyPreviewDevice(device) {
+  const mode = (device === 'mobile' || device === 'desktop') ? device : 'responsive';
+  const wrap = $('.preview-wrap');
+  if (wrap) wrap.setAttribute('data-device', mode);
+  $$('#preview-device-toggle .device-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.device === mode);
+  });
+}
 function loadPreview() {
   const p = getProject(); if (!p) return;
   const urlInput = $('#preview-url');
   const saved = (p.previewUrl || '').trim();
   if (urlInput && !urlInput.value) urlInput.value = saved;
   const frame = $('#preview-frame'); const wrap = $('.preview-wrap');
+  applyPreviewDevice(p.previewDevice || 'responsive');
   const url = (urlInput && urlInput.value.trim()) || saved;
   if (url && frame) { if (frame.getAttribute('src') !== url) frame.src = url; wrap && wrap.classList.add('filled'); }
   else { wrap && wrap.classList.remove('filled'); }
@@ -934,6 +943,13 @@ $('#preview-go')?.addEventListener('click', () => {
   if (!url) { toast('Paste your dev-server URL first'); return; }
   if (p) { p.previewUrl = url; saveProjects(); }
   loadPreview();
+});
+$('#preview-device-toggle')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.device-btn'); if (!btn) return;
+  const device = btn.dataset.device || 'responsive';
+  applyPreviewDevice(device);
+  const p = getProject();
+  if (p) { p.previewDevice = device; saveProjects(); }
 });
 $('#reconnect-btn')?.addEventListener('click', () => { wsBackoff = 1500; connectWs(); toast('Reconnecting…'); });
 const ocReset = $('#opencode-reset'); if (ocReset) ocReset.addEventListener('click', () => {

@@ -114,15 +114,22 @@
       <div id="chat-panel-preview" class="chat-panel" style="display:none;flex-direction:column;flex:1;min-height:0">
         <div class="preview-bar">
           <input id="preview-url" placeholder="http://localhost:5173 (dev server)" autocomplete="off"/>
+          <div class="preview-device-toggle" id="preview-device-toggle" role="group" aria-label="Preview device">
+            <button class="device-btn active" type="button" data-device="responsive" title="Responsive">Responsive</button>
+            <button class="device-btn" type="button" data-device="desktop" title="PC / Desktop">PC</button>
+            <button class="device-btn" type="button" data-device="mobile" title="Mobile phone">Phone</button>
+          </div>
           <button class="btn small" id="preview-go" type="button">Go</button>
           <button class="icon-btn" id="preview-reload" title="Reload preview">↻</button>
         </div>
-        <div class="preview-wrap">
-          <iframe id="preview-frame" title="Preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+        <div class="preview-wrap" data-device="responsive">
+          <div class="preview-device-frame">
+            <iframe id="preview-frame" title="Preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+          </div>
           <div class="empty-state" id="preview-empty" style="padding:16px">
             <div>
               <h2>Live preview</h2>
-              <p class="muted">Paste your running dev-server URL above (e.g. the Vite/Next.js dev URL), then tap Go. Judge the result here, then ask for changes in Chat.</p>
+              <p class="muted">Paste your running dev-server URL above (e.g. the Vite/Next.js dev URL), then tap Go. Use the device buttons to preview on mobile phone or PC. Judge the result here, then ask for changes in Chat.</p>
             </div>
           </div>
         </div>
