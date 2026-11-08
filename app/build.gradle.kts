@@ -12,8 +12,8 @@ android {
         applicationId = "com.opengateway.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "2.1.0"
+        versionCode = 12
+        versionName = "2.1.1"
         // arm64-only: 99% phones, ~35 MB APK
         ndk { abiFilters += "arm64-v8a" }
     }

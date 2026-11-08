@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenuItem
@@ -62,12 +64,15 @@ fun SettingsScreen() {
   var expandedThinking by remember { mutableStateOf(false) }
   val providers = Provider.entries.map { it.id }
   var dynamicModels by remember { mutableStateOf<List<String>>(emptyList()) }
-  val models = dynamicModels.ifEmpty { ModelCatalog.modelsFor(provider) }
+  // Only real models returned by the embedded binary (no fabricated fallback list).
+  val models = dynamicModels
+  var diagBusy by remember { mutableStateOf(false) }
+  var diagResult by remember { mutableStateOf("") }
 
   LaunchedEffect(Unit) {
     try {
       provider = repo.provider()
-      model = repo.model() ?: models.firstOrNull() ?: ""
+      model = repo.model() ?: ""
       thinking = repo.thinking()
       mode = repo.permission()
     } catch (_: Exception) {}
@@ -83,7 +88,20 @@ fun SettingsScreen() {
     permLauncher.launch(perms)
   }
 
-  Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+  Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Text("Diagnostics (tap first if chat fails)")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(onClick = {
+        diagBusy = true
+        scope.launch(Dispatchers.IO) { diagResult = OpenCodeRunner(ctx).selfTest(); diagBusy = false }
+      }, enabled = !diagBusy) { Text(if (diagBusy) "Testing…" else "Run self-test") }
+      Button(onClick = {
+        diagBusy = true
+        scope.launch(Dispatchers.IO) { diagResult = AssetInstaller.forceReinstall(ctx); diagBusy = false }
+      }, enabled = !diagBusy) { Text("Reinstall binaries") }
+    }
+    if (diagResult.isNotBlank()) SelectionContainer { Text(diagResult) }
+    Divider()
     Text("Multi-AI Setup (default: OpenCode)")
     ExposedDropdownMenuBox(expandedProvider, { expandedProvider = !expandedProvider }) {
       OutlinedTextField(provider, {}, Modifier.fillMaxWidth().menuAnchor(), label = { Text("Provider") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedProvider) })
@@ -92,7 +110,7 @@ fun SettingsScreen() {
           DropdownMenuItem({ Text(p) }, {
             provider = p
             dynamicModels = emptyList()
-            model = ModelCatalog.modelsFor(p).firstOrNull() ?: ""
+            model = ""
             expandedProvider = false
           })
         }
@@ -102,7 +120,7 @@ fun SettingsScreen() {
       Button(onClick = {
         fetching = true
         scope.launch {
-          dynamicModels = try { ModelFetcher.fetchModels(ctx, provider) } catch (_: Exception) { ModelCatalog.modelsFor(provider) }
+          dynamicModels = try { ModelFetcher.fetchModels(ctx, provider) } catch (_: Exception) { emptyList() }
           fetching = false
         }
       }) { Text(if (fetching) "Fetching…" else "Fetch models") }
@@ -116,6 +134,7 @@ fun SettingsScreen() {
         }
       }
     }
+    if (models.isEmpty()) Text("No models loaded yet — tap Fetch models above. If nothing loads, the embedded opencode binary isn't running; use Diagnostics (top of this screen) to check.")
     Text("Thinking level")
     ExposedDropdownMenuBox(expandedThinking, { expandedThinking = !expandedThinking }) {
       OutlinedTextField(thinking, {}, Modifier.fillMaxWidth().menuAnchor(), label = { Text("Thinking") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedThinking) })
@@ -179,21 +198,6 @@ fun SettingsScreen() {
         }
       }) { Text("All-files settings") }
     }
-    Divider()
-    Text("Diagnostics")
-    var diagBusy by remember { mutableStateOf(false) }
-    var diagResult by remember { mutableStateOf("") }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Button(onClick = {
-        diagBusy = true
-        scope.launch(Dispatchers.IO) { diagResult = OpenCodeRunner(ctx).selfTest(); diagBusy = false }
-      }, enabled = !diagBusy) { Text(if (diagBusy) "Testing…" else "Run self-test") }
-      Button(onClick = {
-        diagBusy = true
-        scope.launch(Dispatchers.IO) { diagResult = AssetInstaller.forceReinstall(ctx); diagBusy = false }
-      }, enabled = !diagBusy) { Text("Reinstall binaries") }
-    }
-    if (diagResult.isNotBlank()) SelectionContainer { Text(diagResult) }
     Divider()
     Text("OpenCode binary + busybox bundled (assets/bin/arm64-v8a). No Termux required. Provider/model/permission written to workspace/opencode.json and passed as --model at runtime. Git via busybox applet (ls/git/log/status).")
   }

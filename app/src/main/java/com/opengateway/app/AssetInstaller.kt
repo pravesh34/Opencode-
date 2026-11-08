@@ -19,7 +19,7 @@ import java.io.File
 object AssetInstaller {
   private const val VERSION_FILE = ".bin_version"
   private const val ASSET_ROOT = "bin/arm64-v8a"
-  const val TARGET_VERSION = "v2.1.0"
+  const val TARGET_VERSION = "v2.1.1"
 
   /** Package-private list of files to extract (load-bearing: keep in sync with android.yml). */
   private val BUNDLED_FILES = listOf(
