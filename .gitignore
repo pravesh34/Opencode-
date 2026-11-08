@@ -11,3 +11,9 @@ app/build/
 *.apk
 web/node_modules/
 web/package-lock.json
+# user's other project — never commit from this repo
+/auto-job-application-agent/
+# screenshots / scratch
+*.png.bak
+output.log
+gateway.log
