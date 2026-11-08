@@ -25,7 +25,7 @@ import java.io.File
 object AssetInstaller {
   private const val VERSION_FILE = ".bin_version"
   private const val ASSET_ROOT = "bin/arm64-v8a"
-  const val TARGET_VERSION = "v2.1.2"
+  const val TARGET_VERSION = "v2.1.3"
 
   /** load-bearing: keep in sync with android.yml (paths + patchelf targets). */
   val LIBRARIES = listOf(
@@ -59,6 +59,9 @@ object AssetInstaller {
 
   fun binDir(ctx: Context): File = execDir(ctx)
   fun opencodeBin(ctx: Context) = File(execDir(ctx), "opencode")
+
+  /** Loader lives in filesDir/bin (dlopen OK). Non-PIE opencode must be loaded through it. */
+  fun loaderBin(ctx: Context) = File(libDir(ctx), "ld-musl-aarch64.so.1")
 
   fun workspaceDir(ctx: Context) = File(ctx.filesDir, "workspace").apply { mkdirs() }
 

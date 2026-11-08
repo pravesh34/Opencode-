@@ -72,10 +72,14 @@ class OpenCodeRunner(private val ctx: Context) {
     // Plan = ask before edit/bash; Build = allow
     val perm = if (permission == "build") "allow" else "ask"
     // opencode run supports --permission flag in recent versions; passing both config + flag is harmless if unknown (we still write opencode.json as source of truth)
-    Log.d("OpenCodeRunner", "exec ${binFile.absolutePath} ${args.joinToString(" "){"\"$it\""}} perm=$perm")
+    // opencode is ET_EXEC (non-PIE): Android refuses direct exec. Run it through the
+    // musl loader (PIE, allowed), which loads the program for us.
+    val loader = AssetInstaller.loaderBin(ctx)
+    val cmd = listOf(loader.absolutePath, binFile.absolutePath) + args
+    Log.d("OpenCodeRunner", "exec ${cmd.joinToString(" "){"\"$it\""}} perm=$perm")
     val proc: Process
     try {
-      val pb = ProcessBuilder(binFile.absolutePath, *args.toTypedArray())
+      val pb = ProcessBuilder(cmd)
       pb.directory(workspace)
       pb.redirectErrorStream(true)
       for ((k, v) in env) if (v.isNotBlank()) pb.environment()[k] = v
@@ -132,7 +136,9 @@ class OpenCodeRunner(private val ctx: Context) {
       return sb.toString()
     }
     return try {
-      val proc = ProcessBuilder(bin.absolutePath, "--version")
+      // opencode is ET_EXEC (non-PIE) — Android denies direct exec. Load via musl loader.
+      val loader = AssetInstaller.loaderBin(ctx)
+      val proc = ProcessBuilder(loader.absolutePath, bin.absolutePath, "--version")
         .directory(AssetInstaller.workspaceDir(ctx))
         .redirectErrorStream(true)
         .start()

@@ -13,7 +13,8 @@ object ModelFetcher {
     val bin = AssetInstaller.opencodeBin(ctx)
     if (!bin.exists() || !bin.canExecute()) return@withContext emptyList()
     try {
-      val proc = ProcessBuilder(bin.absolutePath, "models").apply {
+      val loader = AssetInstaller.loaderBin(ctx)
+      val proc = ProcessBuilder(loader.absolutePath, bin.absolutePath, "models").apply {
         directory(AssetInstaller.workspaceDir(ctx))
         redirectErrorStream(true)
       }.start()
