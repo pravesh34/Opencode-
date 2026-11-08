@@ -9,6 +9,20 @@ const COLORS = ['#00a884','#53bdeb','#d4a373','#e879f9','#f87171','#fbbf24','#34
 function uid() { return 'p_' + Math.random().toString(36).slice(2, 10); }
 function esc(s){ return String(s||''); }
 
+// ---------- Username (header) ----------
+let userName = localStorage.getItem('og_username') || '';
+function showUserName() {
+  const el = $('#user-name');
+  if (el && userName) el.textContent = userName;
+  const inp = $('#username'); if (inp && document.activeElement !== inp) inp.value = userName || '';
+}
+$('#save-username')?.addEventListener('click', () => {
+  userName = ($('#username').value || '').trim();
+  localStorage.setItem('og_username', userName);
+  showUserName(); toast(userName ? 'Name saved' : 'Name cleared');
+});
+showUserName();
+
 // ---------- Theme ----------
 (function initTheme() {
   const saved = localStorage.getItem('og_theme');
@@ -175,7 +189,7 @@ function deleteSession(pid, sid) {
 }
 function syncSessionConfig(p, sid) {
   p = p || getProject(); const s = sid ? (p.sessions||[]).find(x=>x.id===sid) : getActiveSession(p); if(!p||!s) return;
-  wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null, opencodeSession:s.opencodeSession||null});
+  wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null, opencodeSession:s.opencodeSession||null, thinking:!!s.thinking});
 }
 
 function setMainView(view) {
@@ -301,6 +315,8 @@ async function health() {
     const r = await fetch('/api/health', { cache: 'no-store' }); const j = await r.json();
     set(!!j.ok);
     if (j.branch && j.branch !== '—') gitBranch = j.branch;
+    if (!userName && j.user) { userName = String(j.user); localStorage.setItem('og_username', userName); }
+    showUserName();
     if (j.project && !defaultCwd) defaultCwd = j.project;
     if (j.shell) { const el=$('#shell-state'); if(el) el.textContent = j.platform==='darwin'?'Mac':(j.platform==='android'?'Termux':j.platform||'host'); const sub=$('#shell-sub'); if(sub) sub.textContent=String(j.shell).split('/').pop(); }
     if (j.opencode !== undefined) { const el=$('#opencode-state'); if(el) el.textContent=j.opencode?'Ready':'CLI missing'; const sub=$('#opencode-sub'); if(sub) sub.textContent=j.opencode?'opencode run available':'Install opencode, restart server'; }
@@ -363,12 +379,14 @@ function updateOpenCodeInfo(j) {
     if (s) {
       if (j.session !== undefined) s.opencodeSession = j.session || null;
       if (j.model !== undefined) s.model = j.model || '';
+      if (j.thinking !== undefined) s.thinking = !!j.thinking;
       if (j.busy !== undefined) { s.busy = !!j.busy; if (activeProjectId===p.id && sid===s.id) setBusyUI(!!j.busy); }
       saveProjects();
     }
     if (activeProjectId === p.id) {
       $('#chat-subtitle').textContent = chatSubtitle(p);
       renderSessionTabs(p);
+      const tb = $('#think-btn'); if (tb && s) { tb.classList.toggle('on', !!s.thinking); tb.textContent = s.thinking ? '💭 Deep' : '💭 Think'; }
       if ($('#project-modal-back').classList.contains('show') && s) $('#proj-session-id').textContent = s.opencodeSession || 'new session';
     }
     renderProjectList();
@@ -750,7 +768,14 @@ $('#files-refresh').addEventListener('click', ()=>loadFileList(filesCwd));
 $('#back-files').addEventListener('click', backToList);
 $('#nav-files').addEventListener('click', ()=>setMainView('files'));
 const sessAdd = $('#session-add'); if (sessAdd) sessAdd.addEventListener('click', () => { const p=getProject(); if(!p) return; createSession(p); renderSessionTabs(p); renderMessages(p); syncSessionConfig(p); renderProjectList(); toast('New session added'); });
-const sessModel = $('#session-model'); if (sessModel) sessModel.addEventListener('change', () => { const p=getProject(); const s=getActiveSession(p); if(!p||!s) return; s.model = sessModel.value||''; saveProjects(); wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null}); $('#chat-subtitle').textContent = chatSubtitle(p); renderProjectList(); toast(s.model ? 'Model set' : 'Model: default'); });
+const sessModel = $('#session-model'); if (sessModel) sessModel.addEventListener('change', () => { const p=getProject(); const s=getActiveSession(p); if(!p||!s) return; s.model = sessModel.value||''; saveProjects(); wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null}); $('#chat-subtitle').textContent = chatSubtitle(p); renderProjectList(); toast(s.model ? 'Model: ' + s.model.split('/').pop() : 'Model: default'); });
+$('#think-btn')?.addEventListener('click', () => {
+  const p = getProject(); const s = getActiveSession(p); if (!p || !s) return;
+  s.thinking = !s.thinking; saveProjects();
+  wsSend({type:'opencode_set_thinking', projectId:p.id, sessionId:s.id, thinking:s.thinking});
+  renderSessionTabs(p);
+  toast(s.thinking ? '💭 Deep thinking on' : 'Thinking off');
+});
 
 // ---------- Wiring ----------
 $('#new-project-btn').addEventListener('click', ()=>openProjectModal(null));

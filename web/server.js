@@ -73,6 +73,7 @@ function gitBranch() {
   return GIT_BRANCH;
 }
 gitBranch();
+console.log('User:', (() => { try { return os.userInfo().username || 'user'; } catch { return 'user'; } })());
 
 const mime = {
   '.html': 'text/html',
@@ -120,7 +121,7 @@ function serve(req, res) {
     if (err) {
       if (urlPath === '/api/health') {
         res.writeHead(200, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
-        return res.end(JSON.stringify({ ok: true, time: Date.now(), opencode: !!OPENCODE, shell: SHELL_BIN, platform: process.platform, branch: gitBranch(), project: PROJECT_ROOT }));
+        return res.end(JSON.stringify({ ok: true, time: Date.now(), opencode: !!OPENCODE, shell: SHELL_BIN, platform: process.platform, branch: gitBranch(), user: (() => { try { return os.userInfo().username || 'user'; } catch { return 'user'; } })(), project: PROJECT_ROOT }));
       }
       if (urlPath === '/api/fs/list') {
         try {
@@ -310,13 +311,13 @@ function getProject(session, pid) {
 function getSession(session, pid, sid) {
   const p = getProject(session, pid);
   const id = sid || 'default';
-  if (!p.sessions[id]) p.sessions[id] = { model: null, opencodeSession: null, queue: [], busy: false, opencodeChild: null };
+  if (!p.sessions[id]) p.sessions[id] = { model: null, opencodeSession: null, thinking: false, queue: [], busy: false, opencodeChild: null };
   return p.sessions[id];
 }
 function opencodeInfo(session, pid, sid) {
   const p = getProject(session, pid);
   const s = getSession(session, pid, sid);
-  return { projectId: pid || session.activeProject || null, sessionId: sid || 'default', session: s.opencodeSession, model: s.model || null, cwd: p.cwd, busy: !!s.busy };
+  return { projectId: pid || session.activeProject || null, sessionId: sid || 'default', session: s.opencodeSession, model: s.model || null, thinking: !!s.thinking, cwd: p.cwd, busy: !!s.busy };
 }
 
 function processQueue(ws, session, pid, sid) {
@@ -370,7 +371,11 @@ function runOpencodeNow(ws, session, pid, sid, message) {
   const ss = sid || 'default';
   const p = getProject(session, id);
   const s = getSession(session, id, ss);
-  const args = ['run', '--format', 'json', message];
+  // Thinking mode: ask the model to reason explicitly before acting.
+  const fullMessage = s.thinking
+    ? 'Think through this carefully and reason step by step before acting. Show your reasoning briefly, then give the result.\n\n' + message
+    : message;
+  const args = ['run', '--format', 'json', fullMessage];
   if (s.model) args.push('--model', s.model);
   if (s.opencodeSession) args.push('--session', s.opencodeSession);
   const cwd = (p.cwd && fs.existsSync(p.cwd)) ? p.cwd : PROJECT_ROOT;
@@ -492,7 +497,13 @@ function handle(ws) {
       const s = getSession(session, pid, sid);
       if (data.model !== undefined) s.model = data.model || null;
       if (data.opencodeSession !== undefined) s.opencodeSession = data.opencodeSession || null;
+      if (data.thinking !== undefined) s.thinking = !!data.thinking;
       safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
+    } else if (data.type === 'opencode_set_thinking') {
+      const s = getSession(session, pid, sid);
+      s.thinking = !!data.thinking;
+      safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
+      safeSend(ws, { type: 'system', projectId: pid, sessionId: sid, text: s.thinking ? '💭 Deep thinking on' : 'Thinking off' });
     }
   });
   ws.on('close', () => {

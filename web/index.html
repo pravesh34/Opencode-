@@ -18,7 +18,10 @@
 <div class="app" id="app">
   <aside class="sidebar" id="sidebar">
     <div class="side-head">
-      <h1>Projects</h1>
+      <div>
+        <h1 id="user-name">Code-Go</h1>
+        <div class="subtitle" id="user-sub" style="font-size:13px;color:var(--muted)">Projects</div>
+      </div>
       <div class="spacer"></div>
       <span id="health" class="conn-pill"><span class="dot"></span><span id="health-text">…</span></span>
       <button class="icon-btn" id="theme-btn" title="Dark / light mode" aria-label="Theme">◑</button>
@@ -52,7 +55,8 @@
       <div class="session-bar" id="session-bar">
         <div class="session-tabs" id="session-tabs"></div>
         <button class="icon-btn small" id="session-add" title="New session">＋</button>
-        <select id="session-model" class="session-model" title="Model for this session"><option value="">Default model</option></select>
+        <select id="session-model" class="session-model" title="Change model for this chat anytime"><option value="">Default model</option></select>
+        <button class="btn secondary small" id="think-btn" type="button" title="Deep thinking on/off">💭 Think</button>
       </div>
       <div class="tabs" id="chat-tabs">
         <button class="tab active" data-tab="chat" type="button">Chat</button>
@@ -204,6 +208,9 @@
             <button class="btn secondary" id="notif-btn" type="button">Enable “AI finished” notifications</button>
             <span id="notif-state" class="small muted">—</span>
           </div>
+          <label>Your name (shown in the header)</label>
+          <input id="username" placeholder="Your name"/>
+          <div class="row"><button class="btn" id="save-username" type="button">Save name</button></div>
         </div>
       </div>
     </div>
