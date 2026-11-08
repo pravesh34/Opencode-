@@ -144,6 +144,48 @@ function chatSubtitle(p) {
   return `${br} · ${gatewayOnline ? 'Connected' : 'Disconnected'}`;
 }
 
+// ---------- Markdown (small, dependency-free, safe) ----------
+function inlineMd(s) {
+  return s
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function renderMd(text) {
+  const src = String(text || '');
+  const blocks = [];
+  // 1) extract fenced code first, escape everything at the end
+  const fenced = src.replace(/```(\w*)?\n?([\s\S]*?)(?:\n```|$)/g, (_, lang, code) => {
+    const id = '%%CODE' + blocks.length + '%%';
+    blocks.push('<pre><code>' + escapeHtml(code.replace(/\n$/, '')) + '</code></pre>');
+    return '\n' + id + '\n';
+  });
+  const lines = fenced.split('\n');
+  let html = '', inUl = false, inOl = false;
+  const closeLists = () => { if (inUl) { html += '</ul>'; inUl = false; } if (inOl) { html += '</ol>'; inOl = false; } };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (/^%%CODE\d+%%$/.test(line)) { closeLists(); html += line; continue; }
+    if (!line) { closeLists(); continue; }
+    if (/^-{3,}$/.test(line)) { closeLists(); html += '<hr/>'; continue; }
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { closeLists(); html += `<h${h[1].length + 2} class="md-h">${inlineMd(escapeHtml(h[2]))}</h${h[1].length + 2}>`; continue; }
+    if (/^>/.test(line)) { closeLists(); html += `<blockquote>${inlineMd(escapeHtml(line.slice(1).trim()))}</blockquote>`; continue; }
+    const ul = line.match(/^\s*[-*]\s+(.*)$/);
+    if (ul) { if (!inUl) { closeLists(); html += '<ul>'; inUl = true; } html += `<li>${inlineMd(escapeHtml(ul[1]))}</li>`; continue; }
+    const ol = line.match(/^\d+\.\s+(.*)$/);
+    if (ol) { if (!inOl) { closeLists(); html += '<ol>'; inOl = true; } html += `<li>${inlineMd(escapeHtml(ol[1]))}</li>`; continue; }
+    closeLists();
+    const safe = inlineMd(escapeHtml(line));
+    if (/^(https?:\/\/\S+)$/.test(line)) html += `<p><a href="${safe}" target="_blank" rel="noopener">${safe}</a></p>`;
+    else html += `<p>${safe}</p>`;
+  }
+  closeLists();
+  for (let i = 0; i < blocks.length; i++) html = html.replace('%%CODE' + i + '%%', blocks[i]);
+  return html;
+}
+
 // ---------- Rendering ----------
 function renderProjectList() {
   const pc = $('#projects-count'); if (pc) pc.textContent = `${projects.length} repositories`;
@@ -224,20 +266,17 @@ function renderMessages(p, sid) {
   box.innerHTML = groups.map(g => {
     const last = g.msgs[g.msgs.length-1];
     const t = last.time ? timeLabel(last.time) : '';
-    const bubbles = g.msgs.map(m => `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`).join('');
+    // AI replies render as decorated markdown; user messages stay plain.
+    const bubbles = g.msgs.map(m => m.role === 'assistant'
+      ? `<div class="msg assistant md">${renderMd(m.text)}</div>`
+      : `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`).join('');
+    // No Accept/Undo — changes apply directly; revert by asking. Copy/Regen stay.
     let actions = '';
     if (g.role === 'assistant' && last) {
-      if (hasDiff(last.text)) {
-        actions = `<div class="msg-actions">
-          <button class="btn secondary small" type="button" data-act="accept">Accept</button>
-          <button class="btn secondary small" type="button" data-act="undo">Undo</button>
-        </div>`;
-      } else {
-        actions = `<div class="msg-actions">
-          <button class="btn secondary small" type="button" data-act="copy">Copy</button>
-          <button class="btn secondary small" type="button" data-act="regen">Regenerate</button>
-        </div>`;
-      }
+      actions = `<div class="msg-actions">
+        <button class="btn secondary small" type="button" data-act="copy">Copy</button>
+        <button class="btn secondary small" type="button" data-act="regen">Regenerate</button>
+      </div>`;
     }
     return `<div class="msg-group ${g.role}">${bubbles}${t ? `<div class="msg-time">${escapeHtml(t)}</div>` : ''}${actions}</div>`;
   }).join('');
@@ -464,7 +503,16 @@ function appendAssistantStream(p, sid, text) {
     clearInterval(st.tickId); st.tickId = setInterval(tick, 1000);
   }
   streams[key].text += String(text);
-  const body = streams[key].el.querySelector('.body'); if (body) body.textContent = streams[key].text;
+  // live-decorate: re-parse markdown at most once per animation frame
+  const st = streams[key];
+  if (!st.renderQueued) {
+    st.renderQueued = true;
+    requestAnimationFrame(() => {
+      st.renderQueued = false;
+      const body = st.el.querySelector('.body');
+      if (body) body.innerHTML = renderMd(st.text);
+    });
+  }
   if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) box.scrollTop = box.scrollHeight;
 }
 function appendStep(p, sid, text) {
