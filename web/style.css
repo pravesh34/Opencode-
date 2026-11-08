@@ -1,12 +1,12 @@
 :root{
   --bg:#0B1217; --panel:#141E26; --panel2:#22313C; --panel3:#1a2831;
-  --text:#E8EEF2; --muted:#8FA1AE; --accent:#19C37D; --accent-text:#04130C;
+  --text:#E8EEF2; --muted:#8FA1AE; --accent:#0B7A55; --accent-text:#FFFFFF;
   --border:#22313C; --border2:#33454F; --danger:#FF8A80; --amber:#F5A524;
   --radius:14px;
 }
 [data-theme="light"]{
   --bg:#F7F8FA; --panel:#FFFFFF; --panel2:#EEF1F4; --panel3:#E6EBEF;
-  --text:#11181F; --muted:#5B6B76; --accent:#0FA35E; --accent-text:#FFFFFF;
+  --text:#11181F; --muted:#5B6B76; --accent:#0B7A55; --accent-text:#FFFFFF;
   --border:#E3E8ED; --border2:#CBD5DC; --danger:#D64545; --amber:#B7791F;
 }
 *{box-sizing:border-box}
@@ -26,8 +26,8 @@ a{color:var(--accent)}
   .app.show-main .main{display:flex}
 }
 
-/* Sidebar (reference: Projects) */
-.side-head{display:flex;align-items:center;gap:12px;padding:calc(16px + env(safe-area-inset-top,0px)) 20px 8px;min-height:64px}
+/* Sidebar (reference: Projects) — extra top room for notch/status bar */
+.side-head{display:flex;align-items:center;gap:12px;padding:calc(28px + env(safe-area-inset-top,0px)) 20px 8px;min-height:72px}
 .side-head h1{font-size:26px;margin:0;font-weight:700;letter-spacing:-.02em}
 .side-head .spacer{flex:1}
 .conn-pill{display:flex;align-items:center;gap:8px;background:var(--panel);border-radius:999px;padding:8px 12px;font-size:13px;color:var(--muted)}
@@ -54,8 +54,8 @@ a{color:var(--accent)}
 .side-foot .nav-btn{flex:1;min-height:44px;background:var(--panel);border:0;color:var(--muted);border-radius:12px;padding:10px 8px;font-size:14px;cursor:pointer;text-align:center}
 .side-foot .nav-btn.active{color:var(--text);background:var(--panel2)}
 
-/* Headers */
-.chat-head{display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top,0px)) 20px 8px;min-height:64px}
+/* Headers — notch-safe top padding */
+.chat-head{display:flex;align-items:center;gap:10px;padding:calc(28px + env(safe-area-inset-top,0px)) 20px 8px;min-height:72px}
 .chat-head .back{display:none}
 @media(max-width:720px){.chat-head .back{display:grid}}
 .chat-head .title-wrap{flex:1;min-width:0}

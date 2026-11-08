@@ -5,7 +5,7 @@
   "scope": "/",
   "display": "standalone",
   "background_color": "#0B1217",
-  "theme_color": "#19C37D",
+  "theme_color": "#0B7A55",
   "description": "Code-Go — projects + terminal + AI coding (OpenCode) in your browser. Works on Mac and Android phone.",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },

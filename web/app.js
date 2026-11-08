@@ -9,8 +9,8 @@ const COLORS = ['#00a884','#53bdeb','#d4a373','#e879f9','#f87171','#fbbf24','#34
 function uid() { return 'p_' + Math.random().toString(36).slice(2, 10); }
 function esc(s){ return String(s||''); }
 
-// ---------- Username (header) ----------
-let userName = localStorage.getItem('og_username') || '';
+// ---------- Username (header) — defaults to Pravesh Sharma, editable in Settings ----------
+let userName = localStorage.getItem('og_username') || 'Pravesh Sharma';
 function showUserName() {
   const el = $('#user-name');
   if (el && userName) el.textContent = userName;
@@ -315,7 +315,7 @@ async function health() {
     const r = await fetch('/api/health', { cache: 'no-store' }); const j = await r.json();
     set(!!j.ok);
     if (j.branch && j.branch !== '—') gitBranch = j.branch;
-    if (!userName && j.user) { userName = String(j.user); localStorage.setItem('og_username', userName); }
+    // Name is user-owned — system username is NOT used to override it.
     showUserName();
     if (j.project && !defaultCwd) defaultCwd = j.project;
     if (j.shell) { const el=$('#shell-state'); if(el) el.textContent = j.platform==='darwin'?'Mac':(j.platform==='android'?'Termux':j.platform||'host'); const sub=$('#shell-sub'); if(sub) sub.textContent=String(j.shell).split('/').pop(); }
