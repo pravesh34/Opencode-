@@ -206,3 +206,66 @@ input[type=text],input:not([type]),select{width:100%;background:var(--panel2);bo
 input,select{font-size:16px}
 [data-theme="light"] .terminal{background:#10151A;color:#9BE3C0}
 [data-theme="light"] .file-preview{background:#10151A}
+
+/* ---- Mobile organization: calm header, scrollable bars, no overlap ---- */
+@media(max-width:720px){
+  /* thinner horizontal padding */
+  .side-head,.chat-head{padding-left:16px;padding-right:16px;gap:8px}
+  .search,.project-list,.side-foot,.tabs,.banner,.chips,.preview-bar,.files-bar,.files-wrap,.settings-wrap,.terminal-wrap{padding-left:16px;padding-right:16px;margin-left:0;margin-right:0}
+  .project-list,.terminal-wrap{padding-left:16px;padding-right:16px}
+  #project-messages{padding-left:16px;padding-right:16px}
+  .composer{padding-left:16px;padding-right:16px}
+  .tabs{margin-left:16px;margin-right:16px}
+  .banner{margin-left:16px;margin-right:16px}
+  .preview-wrap{margin-left:16px;margin-right:16px}
+
+  /* Sidebar header: dot-only pill so name + icons fit */
+  .conn-pill{padding:8px}
+  .conn-pill #health-text{display:none}
+  .conn-pill .dot{width:10px;height:10px}
+  .side-head h1{font-size:22px}
+  .icon-btn{width:44px;height:44px}
+
+  /* Chat header: title shrinks, pill collapses to dot */
+  .chat-head .avatar{display:none}
+  .pill{font-size:11px;padding:6px 8px;max-width:110px;overflow:hidden;text-overflow:ellipsis}
+  #ws-state{font-size:0}
+  #ws-state::before{font-size:0}
+  #ws-state{padding:8px}
+  .chat-head .icon-btn{width:44px;height:44px}
+  #project-settings-btn,#export-btn{padding:0}
+
+  /* Session bar: one clean scroll row */
+  .session-bar{padding-left:16px;padding-right:16px;gap:6px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .session-tabs{flex:0 0 auto;overflow:visible}
+  .stab{min-height:36px}
+  .session-model{max-width:120px;min-height:36px;padding:6px 8px;font-size:12px;flex:0 0 auto}
+  #think-btn{flex:0 0 auto;min-height:36px;padding:8px 10px;font-size:12px}
+
+  /* Segmented tabs: clear active state, no squish */
+  .tab{min-height:44px;font-size:13px;white-space:nowrap}
+
+  /* Messages: full-width assistant cards */
+  .msg{max-width:94%}
+  .msg.assistant{border-radius:14px}
+  .msg.user{border-radius:14px 14px 4px 14px}
+
+  /* Composer: 2 tight rows — buttons icon-only, textarea breathes */
+  .composer{gap:6px}
+  .composer .btn.secondary{width:44px;height:52px;min-height:52px;font-size:18px}
+  #send-btn{width:52px;height:52px;font-size:20px}
+  #prio-btn,#stop-btn{width:44px;height:52px}
+
+  /* Key bar: scrolls, never compresses */
+  .keybar{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .key{flex:0 0 auto;min-width:56px}
+  .key.enter{min-width:96px}
+
+  /* Project cards: breathing room */
+  .project-item{padding:14px}
+  .fab{margin-left:16px;margin-right:16px}
+
+  /* Header stacking fix: no overlay */
+  .chat-head{min-height:64px}
+  .side-head{min-height:64px}
+}
