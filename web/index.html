@@ -87,90 +87,79 @@
         <span>Disconnected</span>
         <button class="btn small" id="reconnect-btn" type="button">Reconnect</button>
       </div>
-      <div id="project-messages"></div>
-      <div class="chips" id="quick-chips">
-        <button class="chip" type="button" data-chip="Fix my last error: ">Fix last error</button>
-        <button class="chip" type="button" data-chip="Add this feature: ">Add feature</button>
-        <button class="chip" type="button" data-chip="Explain this file in simple words: ">Explain this file</button>
-        <button class="chip" type="button" data-chip="Undo your last change. ">Undo last change</button>
-        <button class="chip" type="button" data-chip="Commit the current change with a good message. ">Commit</button>
-      </div>
-      <form class="composer" id="opencode-form">
-        <input type="file" id="attach-file" accept="image/*,.txt,.md,.pdf" hidden/>
-        <button class="btn secondary composer-icon" type="button" id="attach-btn" aria-label="Attach file" title="Attach image / file">📎</button>
-        <div class="composer-input-wrap">
-          <textarea id="opencode-input" placeholder="Describe what to build" rows="1" maxlength="8000" aria-label="Message"></textarea>
-          <span class="char-count" id="char-count" aria-hidden="true">0</span>
-        </div>
-        <button class="btn secondary composer-icon" type="button" id="mic-btn" aria-label="Voice input" title="Voice input">🎙</button>
-        <button class="btn secondary composer-icon" type="button" id="prio-btn" aria-label="Priority" title="Force next message to the front">⚡</button>
-        <button class="btn danger hidden" type="button" id="stop-btn" aria-label="Stop">■</button>
-        <button class="btn composer-send" type="submit" id="send-btn" aria-label="Send">↑</button>
-      </form>
-    </div>
 
-    <!-- Live preview view -->
-    <div id="view-preview" class="content" style="display:none;flex-direction:column">
-      <div class="chat-head">
-        <button class="icon-btn back" id="back-preview" title="Back">←</button>
-        <div class="title-wrap">
-          <div class="title">Preview</div>
-          <div class="subtitle" id="preview-subtitle">Running app</div>
+      <div id="chat-panel-chat" class="chat-panel" style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div id="project-messages"></div>
+        <div class="chips" id="quick-chips">
+          <button class="chip" type="button" data-chip="Fix my last error: ">Fix last error</button>
+          <button class="chip" type="button" data-chip="Add this feature: ">Add feature</button>
+          <button class="chip" type="button" data-chip="Explain this file in simple words: ">Explain this file</button>
+          <button class="chip" type="button" data-chip="Undo your last change. ">Undo last change</button>
+          <button class="chip" type="button" data-chip="Commit the current change with a good message. ">Commit</button>
         </div>
-        <button class="icon-btn" id="preview-reload" title="Reload preview">↻</button>
+        <form class="composer" id="opencode-form">
+          <input type="file" id="attach-file" accept="image/*,.txt,.md,.pdf" hidden/>
+          <button class="btn secondary composer-icon" type="button" id="attach-btn" aria-label="Attach file" title="Attach image / file">📎</button>
+          <div class="composer-input-wrap">
+            <textarea id="opencode-input" placeholder="Describe what to build" rows="1" maxlength="8000" aria-label="Message"></textarea>
+            <span class="char-count" id="char-count" aria-hidden="true">0</span>
+          </div>
+          <button class="btn secondary composer-icon" type="button" id="mic-btn" aria-label="Voice input" title="Voice input">🎙</button>
+          <button class="btn secondary composer-icon" type="button" id="prio-btn" aria-label="Priority" title="Force next message to the front">⚡</button>
+          <button class="btn danger hidden" type="button" id="stop-btn" aria-label="Stop">■</button>
+          <button class="btn composer-send" type="submit" id="send-btn" aria-label="Send">↑</button>
+        </form>
       </div>
-      <div class="preview-bar">
-        <input id="preview-url" placeholder="http://localhost:5173 (dev server)" autocomplete="off"/>
-        <button class="btn small" id="preview-go" type="button">Go</button>
+
+      <div id="chat-panel-preview" class="chat-panel" style="display:none;flex-direction:column;flex:1;min-height:0">
+        <div class="preview-bar">
+          <input id="preview-url" placeholder="http://localhost:5173 (dev server)" autocomplete="off"/>
+          <button class="btn small" id="preview-go" type="button">Go</button>
+          <button class="icon-btn" id="preview-reload" title="Reload preview">↻</button>
+        </div>
+        <div class="preview-wrap">
+          <iframe id="preview-frame" title="Preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+          <div class="empty-state" id="preview-empty" style="padding:16px">
+            <div>
+              <h2>Live preview</h2>
+              <p class="muted">Paste your running dev-server URL above (e.g. the Vite/Next.js dev URL), then tap Go. Judge the result here, then ask for changes in Chat.</p>
+            </div>
+          </div>
+        </div>
+        <span id="preview-subtitle" class="hidden">Running app</span>
       </div>
-      <div class="preview-wrap">
-        <iframe id="preview-frame" title="Preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
-        <div class="empty-state" id="preview-empty" style="padding:16px">
-          <div>
-            <h2>Live preview</h2>
-            <p class="muted">Paste your running dev-server URL above (e.g. the Vite/Next.js dev URL), then tap Go. Judge the result here, then approve or ask for changes in Chat.</p>
+
+      <div id="chat-panel-terminal" class="chat-panel" style="display:none;flex-direction:column;flex:1;min-height:0">
+        <div class="terminal-wrap">
+          <div class="terminal-meta small muted" style="padding:0 2px">Shell · <span id="term-subtitle">cwd tracked</span> <span id="ws-state-term" class="hidden"></span></div>
+          <div class="terminal"><code id="term-out"></code></div>
+          <div class="keybar" id="term-keys">
+            <button class="key" type="button" data-key="esc">Esc</button>
+            <button class="key" type="button" data-key="tab">Tab</button>
+            <button class="key" type="button" data-key="ctrl">Ctrl</button>
+            <button class="key" type="button" data-key="shift">Shift</button>
+            <button class="key" type="button" data-key="up">↑</button>
+            <button class="key" type="button" data-key="down">↓</button>
+            <button class="key" type="button" data-key="left">←</button>
+            <button class="key" type="button" data-key="right">→</button>
+            <button class="key" type="button" data-key="|">|</button>
+            <button class="key" type="button" data-key="/">/</button>
+            <button class="key enter" type="button" data-key="enter">⏎ Enter</button>
+          </div>
+          <form class="tinput" id="term-form">
+            <input id="term-input" placeholder="Try: pwd, ls, git status, npm run dev" autocomplete="off"/>
+            <button class="btn" type="submit">Run</button>
+          </form>
+          <div class="row" style="margin-top:0">
+            <button class="btn secondary small" id="term-copy" type="button">Copy output</button>
+            <button class="btn secondary small hidden" id="term-to-chat" type="button">Send error to chat</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Terminal view -->
-    <div id="view-terminal" class="content" style="display:none;flex-direction:column">
-      <div class="chat-head">
-        <button class="icon-btn back" id="back-term" title="Back">←</button>
-        <div class="avatar" style="width:40px;height:40px;font-size:16px;background:#333">⌘</div>
-        <div class="title-wrap">
-          <div class="title">Terminal</div>
-          <div class="subtitle" id="term-subtitle">Host shell · cwd tracked</div>
-        </div>
-        <span id="ws-state-term" class="pill">…</span>
-      </div>
-      <div class="terminal-wrap">
-        <div class="terminal"><code id="term-out"></code></div>
-        <div class="keybar" id="term-keys">
-          <button class="key" type="button" data-key="esc">Esc</button>
-          <button class="key" type="button" data-key="tab">Tab</button>
-          <button class="key" type="button" data-key="ctrl">Ctrl</button>
-          <button class="key" type="button" data-key="shift">Shift</button>
-          <button class="key" type="button" data-key="up">↑</button>
-          <button class="key" type="button" data-key="down">↓</button>
-          <button class="key" type="button" data-key="left">←</button>
-          <button class="key" type="button" data-key="right">→</button>
-          <button class="key" type="button" data-key="|">|</button>
-          <button class="key" type="button" data-key="/">/</button>
-          <button class="key enter" type="button" data-key="enter">⏎ Enter</button>
-        </div>
-        <form class="tinput" id="term-form">
-          <input id="term-input" placeholder="Try: pwd, ls, git status, npm run dev" autocomplete="off"/>
-          <button class="btn" type="submit">Run</button>
-        </form>
-        <div class="row" style="margin-top:0">
-          <button class="btn secondary small" id="term-copy" type="button">Copy output</button>
-          <button class="btn secondary small hidden" id="term-to-chat" type="button">Send error to chat</button>
-        </div>
-        <p class="muted small" style="margin:0">Real host shell (Mac zsh / Termux bash). <code>cd</code> persists per session. ↑↓ recalls history.</p>
-      </div>
-    </div>
+    <span id="back-preview" class="hidden"></span>
+    <span id="back-term" class="hidden"></span>
 
     <!-- Files view -->
     <div id="view-files" class="content" style="display:none;flex-direction:column">
@@ -242,15 +231,35 @@
             <div><div class="small muted">OpenCode</div><div id="opencode-state">—</div> <span class="small muted" id="opencode-sub"></span></div>
           </div>
           <p class="small muted" style="margin-top:10px">Server time: <span id="uptime">—</span></p>
-          <div class="row">
-            <button class="btn secondary" id="notif-btn" type="button">Enable “AI finished” notifications</button>
-            <span id="notif-state" class="small muted">—</span>
+          <div class="card" style="margin:10px 0 0;padding:12px">
+            <h3 style="margin:0 0 8px;font-size:14px">Notifications</h3>
+            <p class="small muted" style="margin:0 0 8px">Browser permission: <span id="notif-state">—</span></p>
+            <label style="display:flex;align-items:center;gap:10px;margin:8px 0"><input type="checkbox" id="notif-ai-finished"/> AI finished (while away)</label>
+            <label style="display:flex;align-items:center;gap:10px;margin:8px 0"><input type="checkbox" id="notif-message"/> New AI message / reply</label>
+            <label style="display:flex;align-items:center;gap:10px;margin:8px 0"><input type="checkbox" id="notif-new-project"/> New project created</label>
+            <div class="row" style="margin-top:8px">
+              <button class="btn secondary small" id="notif-btn" type="button">Enable notifications</button>
+            </div>
           </div>
           <label>Your name (shown in the header)</label>
           <input id="username" placeholder="Your name"/>
           <div class="row"><button class="btn" id="save-username" type="button">Save name</button></div>
         </div>
       </div>
+    </div>
+
+    <!-- All projects view -->
+    <div id="view-projects" class="content" style="display:none;flex-direction:column">
+      <div class="chat-head">
+        <button class="icon-btn back" id="back-projects" title="Back">←</button>
+        <div class="title-wrap">
+          <div class="title">Projects</div>
+          <div class="subtitle" id="projects-view-subtitle">All projects</div>
+        </div>
+        <button class="icon-btn" id="projects-view-new" title="New project">＋</button>
+      </div>
+      <div class="search" style="padding-top:0"><span class="search-icon" aria-hidden="true">⌕</span><input id="projects-view-search" placeholder="Search projects…" autocomplete="off" aria-label="Search projects"/></div>
+      <div class="project-list" id="projects-view-list" style="padding-bottom:16px"></div>
     </div>
 
     <!-- Empty state (desktop, no selection) -->
