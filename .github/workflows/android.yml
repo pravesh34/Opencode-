@@ -63,8 +63,10 @@ jobs:
 
           # --- Re-point PT_INTERP + RPATH to the app's private bin dir ---
           cp /tmp/opencode "$BIN_DIR/opencode"
-          patchelf --set-interpreter "$RUN_BIN/ld-musl-aarch64.so.1" --set-rpath '$ORIGIN' "$BIN_DIR/opencode"
-          patchelf --set-interpreter "$RUN_BIN/ld-musl-aarch64.so.1" --set-rpath '$ORIGIN' "$BIN_DIR/busybox"
+          # RPATH: $ORIGIN (same-dir .so) + absolute files/bin (libraries always live there,
+          # exec slot may point elsewhere — see BinSlots/AssetInstaller)
+          patchelf --set-interpreter "$RUN_BIN/ld-musl-aarch64.so.1" --set-rpath '$ORIGIN:/data/data/com.opengateway.app/files/bin' "$BIN_DIR/opencode"
+          patchelf --set-interpreter "$RUN_BIN/ld-musl-aarch64.so.1" --set-rpath '$ORIGIN:/data/data/com.opengateway.app/files/bin' "$BIN_DIR/busybox"
 
           chmod 755 "$BIN_DIR"/*
           file "$BIN_DIR"/* || true

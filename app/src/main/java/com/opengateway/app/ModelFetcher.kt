@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 /** Dynamic model list from the embedded binary. Returns empty when the binary can't run — never fabricates names. */
 object ModelFetcher {
   suspend fun fetchModels(ctx: Context, provider: String): List<String> = withContext(Dispatchers.IO) {
+    AssetInstaller.installIfNeeded(ctx)
     val bin = AssetInstaller.opencodeBin(ctx)
     if (!bin.exists() || !bin.canExecute()) return@withContext emptyList()
     try {

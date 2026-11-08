@@ -54,6 +54,8 @@ object ModelCatalog {
 class OpenCodeRunner(private val ctx: Context) {
 
   fun runPrompt(message: String, model: String?, sessionId: String?, permission: String? = "plan", env: Map<String, String> = emptyMap()): Flow<String> = flow {
+    // Idempotent: extracts/probes the exec slot on every send (cheap when fresh)
+    AssetInstaller.installIfNeeded(ctx)
     val binFile = AssetInstaller.opencodeBin(ctx)
     if (!binFile.exists()) {
       emit("[error] opencode binary missing at ${binFile.absolutePath}. Settings -> Reinstall embedded binaries.")
@@ -122,6 +124,7 @@ class OpenCodeRunner(private val ctx: Context) {
   /** One-shot diagnostic for Settings -> Diagnostics (no adb needed). */
   fun selfTest(): String {
     val sb = StringBuilder()
+    AssetInstaller.installIfNeeded(ctx)
     sb.append(AssetInstaller.diagnostics(ctx)).append("\n")
     val bin = AssetInstaller.opencodeBin(ctx)
     if (!bin.exists()) {

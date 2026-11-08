@@ -99,6 +99,13 @@ fun SettingsScreen() {
         diagBusy = true
         scope.launch(Dispatchers.IO) { diagResult = AssetInstaller.forceReinstall(ctx); diagBusy = false }
       }, enabled = !diagBusy) { Text("Reinstall binaries") }
+      Button(onClick = {
+        diagBusy = true
+        scope.launch(Dispatchers.IO) {
+          val slot = AssetInstaller.reprobe(ctx)
+          diagResult = "probed slot -> ${slot.absolutePath}\n(see self-test for details)"; diagBusy = false
+        }
+      }, enabled = !diagBusy) { Text("Re-run slot probe") }
     }
     if (diagResult.isNotBlank()) SelectionContainer { Text(diagResult) }
     Divider()
