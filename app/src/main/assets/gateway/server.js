@@ -151,11 +151,52 @@ function serve(req, res) {
 }
 
 const server = http.createServer(serve);
-server.listen(PORT, () => console.log(`Code-Go web: http://localhost:${PORT}`));
+
+function listenWithRetry(srv, startPort, label, maxAttempts = 10) {
+  let port = Number(startPort);
+  let attempts = 0;
+  return new Promise((resolve, reject) => {
+    const tryListen = () => {
+      attempts++;
+      srv.once('error', (err) => {
+        if (err.code === 'EADDRINUSE' && attempts < maxAttempts) {
+          console.warn(`${label}: port ${port} in use, trying ${port + 1}...`);
+          port++;
+          tryListen();
+        } else if (err.code === 'EADDRINUSE') {
+          reject(new Error(`${label}: ports ${startPort}-${port} all in use. Stop the other process or set ${label.includes('WS') ? 'WS_PORT' : 'PORT'} to a free port.`));
+        } else {
+          reject(err);
+        }
+      });
+      srv.listen(port, () => {
+        console.log(`${label}: http://localhost:${port}`.replace('http://', label.includes('WS') ? 'ws://' : 'http://') + (label.includes('WS') ? '/ws' : ''));
+        resolve(port);
+      });
+    };
+    tryListen();
+  });
+}
 
 // WS on :8080 (chat/terminal) — also upgrade on 3000 for single-origin tunnelling
-const wss = new WebSocket.Server({ port: WS_PORT });
-console.log(`Gateway WS: ws://localhost:${WS_PORT}/ws`);
+const wss = new WebSocket.Server({ noServer: true });
+const wsHttpServer = http.createServer();
+
+Promise.all([
+  listenWithRetry(server, PORT, 'Code-Go web'),
+  listenWithRetry(wsHttpServer, WS_PORT, 'Gateway WS'),
+]).then(([httpPort, wsPort]) => {
+  wsHttpServer.on('upgrade', (req, socket, head) => {
+    if (req.url === '/ws') wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+    else socket.destroy();
+  });
+  // keep resolved ports visible to /api/health if needed
+  server._boundPort = httpPort;
+  wsHttpServer._boundPort = wsPort;
+}).catch((err) => {
+  console.error(err.message || err);
+  process.exit(1);
+});
 
 const server3000wss = new WebSocket.Server({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
@@ -261,7 +302,7 @@ function processQueue(ws, session, pid, sid) {
   runOpencodeNow(ws, session, pid, sid, message);
 }
 
-function runOpencode(ws, session, message, pid, sid) {
+function runOpencode(ws, session, message, pid, sid, priority) {
   const id = pid || session.activeProject || 'default';
   const ss = sid || 'default';
   if (!OPENCODE) {
@@ -270,12 +311,32 @@ function runOpencode(ws, session, message, pid, sid) {
     return;
   }
   const s = getSession(session, id, ss);
+  if (priority) {
+    // Force: kill current run, drop queue, jump the line
+    if (s.opencodeChild) try { s.opencodeChild.kill('SIGINT'); } catch {}
+    s.queue = [];
+    s.busy = false;
+    s.queue.unshift(String(message));
+    safeSend(ws, { type: 'system', projectId: id, sessionId: ss, text: '⚡ Priority: pre-empted current run' });
+    processQueue(ws, session, id, ss);
+    return;
+  }
   s.queue.push(String(message));
   if (s.busy) {
-    safeSend(ws, { type: 'opencode_event', projectId: id, sessionId: ss, text: 'queued' });
+    safeSend(ws, { type: 'opencode_event', projectId: id, sessionId: ss, text: 'queued · ' + s.queue.length + ' waiting' });
   } else {
     processQueue(ws, session, id, ss);
   }
+}
+
+function stopOpencode(ws, session, pid, sid) {
+  const s = getSession(session, pid, sid);
+  s.queue = [];
+  if (s.opencodeChild) try { s.opencodeChild.kill('SIGINT'); } catch {}
+  s.opencodeChild = null; s.busy = false;
+  safeSend(ws, { type: 'system', projectId: pid, sessionId: sid, text: '■ Stopped' });
+  safeSend(ws, { type: 'opencode_done', projectId: pid, sessionId: sid });
+  safeSend(ws, { type: 'opencode_info', ...opencodeInfo(session, pid, sid) });
 }
 
 function runOpencodeNow(ws, session, pid, sid, message) {
@@ -308,6 +369,16 @@ function runOpencodeNow(ws, session, pid, sid, message) {
         if (ev.sessionID && !s.opencodeSession) s.opencodeSession = ev.sessionID;
         if (ev.type === 'text' && ev.part && ev.part.text) { gotText = true; safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: ev.part.text }); }
         else if (ev.type === 'step_finish' && ev.part && ev.part.cost) safeSend(ws, { type: 'opencode_meta', projectId: id, sessionId: ss, text: `cost ${ev.part.cost} · ${JSON.stringify(ev.part.tokens || {})}` });
+        else if ((ev.type === 'tool_use' || ev.type === 'tool') && ev.part) {
+          gotText = true;
+          const name = ev.part.tool || 'tool';
+          const inp = ev.part.input ? JSON.stringify(ev.part.input).slice(0, 120) : '';
+          safeSend(ws, { type: 'opencode_tool', projectId: id, sessionId: ss, text: `🔧 ${name}${inp ? ' ' + inp : ''}` });
+        }
+        else if (ev.type === 'reasoning' || ev.type === 'thinking') {
+          const th = ev.part && ev.part.text ? ev.part.text : (ev.text || '');
+          if (th) safeSend(ws, { type: 'opencode_think', projectId: id, sessionId: ss, text: th });
+        }
         else if (ev.type) safeSend(ws, { type: 'opencode_event', projectId: id, sessionId: ss, text: ev.type });
       } catch { gotText = true; if (line) safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: line }); }
     }
@@ -363,7 +434,9 @@ function handle(ws) {
     } else if (data.type === 'terminal_input') {
       runTerminal(ws, session, String(data.text || ''), pid);
     } else if (data.type === 'opencode_prompt') {
-      runOpencode(ws, session, String(data.text || ''), pid, sid);
+      runOpencode(ws, session, String(data.text || ''), pid, sid, !!data.priority);
+    } else if (data.type === 'opencode_stop') {
+      stopOpencode(ws, session, pid, sid);
     } else if (data.type === 'opencode_reset') {
       const s = getSession(session, pid, sid);
       s.opencodeSession = null; s.queue = [];

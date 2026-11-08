@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#19C37D"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
@@ -21,6 +21,7 @@
       <h1>Projects</h1>
       <div class="spacer"></div>
       <span id="health" class="conn-pill"><span class="dot"></span><span id="health-text">…</span></span>
+      <button class="icon-btn" id="theme-btn" title="Dark / light mode" aria-label="Theme">◑</button>
       <button class="icon-btn" id="new-project-btn" title="New project">＋</button>
     </div>
     <div class="search"><input id="project-search" placeholder="Search projects…" autocomplete="off"/></div>
@@ -71,6 +72,8 @@
       </div>
       <form class="composer" id="opencode-form">
         <input id="opencode-input" placeholder="Describe what to build" autocomplete="off"/>
+        <button class="btn secondary" type="button" id="prio-btn" aria-label="Priority" title="Force next message to the front (pre-empts current run)">⚡</button>
+        <button class="btn danger hidden" type="button" id="stop-btn" aria-label="Stop">■</button>
         <button class="btn" type="submit" id="send-btn" aria-label="Send">↑</button>
       </form>
     </div>
@@ -117,12 +120,14 @@
           <button class="key" type="button" data-key="esc">Esc</button>
           <button class="key" type="button" data-key="tab">Tab</button>
           <button class="key" type="button" data-key="ctrl">Ctrl</button>
+          <button class="key" type="button" data-key="shift">Shift</button>
           <button class="key" type="button" data-key="up">↑</button>
           <button class="key" type="button" data-key="down">↓</button>
           <button class="key" type="button" data-key="left">←</button>
           <button class="key" type="button" data-key="right">→</button>
           <button class="key" type="button" data-key="|">|</button>
           <button class="key" type="button" data-key="/">/</button>
+          <button class="key enter" type="button" data-key="enter">⏎ Enter</button>
         </div>
         <form class="tinput" id="term-form">
           <input id="term-input" placeholder="Try: pwd, ls, git status, npm run dev" autocomplete="off"/>

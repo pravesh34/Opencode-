@@ -9,6 +9,20 @@ const COLORS = ['#00a884','#53bdeb','#d4a373','#e879f9','#f87171','#fbbf24','#34
 function uid() { return 'p_' + Math.random().toString(36).slice(2, 10); }
 function esc(s){ return String(s||''); }
 
+// ---------- Theme ----------
+(function initTheme() {
+  const saved = localStorage.getItem('og_theme');
+  const root = document.documentElement;
+  if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+})();
+$('#theme-btn')?.addEventListener('click', () => {
+  const root = document.documentElement;
+  const next = root.dataset.theme === 'light' ? 'dark' : 'light';
+  root.dataset.theme = next;
+  localStorage.setItem('og_theme', next);
+  toast(next === 'light' ? '☀️ Light mode' : '🌙 Dark mode');
+});
+
 // ---------- Project store ----------
 let projects = [];
 let activeProjectId = null;
@@ -285,9 +299,9 @@ function handleServerMsg(j) {
   else if (j.type==='terminal') addTerm(j.text);
   else if (j.type==='terminal_done') onTerminalDone(j.exitCode || 0);
   else if (j.type==='opencode_text') { clearSlowTimer(); if(p) appendAssistantStream(p, sid, j.text); }
-  else if (j.type==='opencode_event') { /* quiet */ }
+  else if (j.type==='opencode_think' || j.type==='opencode_tool' || j.type==='opencode_event') { if(p) appendStep(p, sid, j.text); }
   else if (j.type==='opencode_meta') { if(p) addSessionMessage(p, sid, 'system', j.text); }
-  else if (j.type==='opencode_done') { clearSlowTimer(); opencodeCurrentDone = true; if(p) finalizeAssistantStream(p, sid); renderSessionTabs(p); }
+  else if (j.type==='opencode_done') { clearSlowTimer(); opencodeCurrentDone = true; if(p) finalizeAssistantStream(p, sid); renderSessionTabs(p); setBusyUI(false); }
   else if (j.type==='opencode_info') updateOpenCodeInfo(j);
   else if (j.type==='opencode_models_list') fillModelList(j.models || []);
 }
@@ -321,12 +335,27 @@ function appendAssistantStream(p, sid, text) {
   const sObj = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p);
   const key = streamKey(p.id, sObj && sObj.id); const box = $('#project-messages');
   if (!streams[key]) {
-    const el = document.createElement('div'); el.className='msg assistant'; el.textContent='';
-    streams[key] = { el, text: '' };
+    const el = document.createElement('div'); el.className='msg assistant';
+    el.innerHTML = '<details class="steps" style="display:none"><summary>💭 Thinking…</summary><pre class="steps-log"></pre></details><div class="body"></div>';
+    streams[key] = { el, text: '', steps: [] };
     if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) { box.appendChild(el); box.scrollTop = box.scrollHeight; }
   }
   streams[key].text += String(text);
-  streams[key].el.textContent = streams[key].text;
+  const body = streams[key].el.querySelector('.body'); if (body) body.textContent = streams[key].text;
+  if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) box.scrollTop = box.scrollHeight;
+}
+function appendStep(p, sid, text) {
+  if (!p || !text) return;
+  const sObj = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p);
+  const key = streamKey(p.id, sObj && sObj.id);
+  let st = streams[key];
+  if (!st) { appendAssistantStream(p, sid, ''); st = streams[key]; }
+  if (!st) return;
+  st.steps.push(String(text));
+  if (st.steps.length > 40) st.steps = st.steps.slice(-40);
+  const details = st.el.querySelector('.steps'); const pre = st.el.querySelector('.steps-log');
+  if (details && pre) { details.style.display = ''; pre.textContent = st.steps.join('\n'); }
+  const box = $('#project-messages');
   if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) box.scrollTop = box.scrollHeight;
 }
 function finalizeAssistantStream(p, sid) {
@@ -350,7 +379,7 @@ function updateOpenCodeInfo(j) {
     if (s) {
       if (j.session !== undefined) s.opencodeSession = j.session || null;
       if (j.model !== undefined) s.model = j.model || '';
-      if (j.busy !== undefined) s.busy = !!j.busy;
+      if (j.busy !== undefined) { s.busy = !!j.busy; if (activeProjectId===p.id && sid===s.id) setBusyUI(!!j.busy); }
       saveProjects();
     }
     if (activeProjectId === p.id) {
@@ -372,7 +401,23 @@ function fillModelList(models) {
   const p=getProject(); const s=getActiveSession(p); if($('#session-model')) $('#session-model').value = (s&&s.model)||'';
 }
 
-function sendPrompt(text) {
+let priorityNext = false;
+$('#prio-btn')?.addEventListener('click', () => {
+  priorityNext = !priorityNext;
+  $('#prio-btn').classList.toggle('on', priorityNext);
+  toast(priorityNext ? '⚡ Next message jumps the queue' : 'Priority off');
+});
+$('#stop-btn')?.addEventListener('click', () => {
+  const p = getProject(); if (!p) return;
+  const s = getActiveSession(p); if (!s) return;
+  wsSend({type:'opencode_stop', projectId:p.id, sessionId:s.id});
+  toast('■ Stopping…');
+});
+function setBusyUI(busy) {
+  $('#stop-btn')?.classList.toggle('hidden', !busy);
+  $('#send-btn') && ($('#send-btn').textContent = busy ? '…' : '↑');
+}
+function sendPrompt(text, priority) {
   const p = getProject(); if(!p){ toast('Create a project first'); return false; }
   const s = getActiveSession(p); if(!s){ toast('Create a session first'); return false; }
   addSessionMessage(p, s.id, 'user', text);
@@ -380,14 +425,15 @@ function sendPrompt(text) {
   clearSlowTimer();
   opencodeSlowTimer = setTimeout(() => { if(!opencodeCurrentDone && activeProjectId===p.id) addSessionMessage(p,s.id,'system','Still running — first reply can take 20–60s'); }, 20000);
   if (ws && ws.readyState === WebSocket.OPEN) {
-    wsSend({type:'opencode_prompt', projectId:p.id, sessionId:s.id, text});
+    wsSend({type:'opencode_prompt', projectId:p.id, sessionId:s.id, text, priority: !!priority});
   } else { clearSlowTimer(); addSessionMessage(p,s.id,'assistant','(offline) Start the gateway server to use OpenCode.'); }
   return true;
 }
 $('#opencode-form').addEventListener('submit', e => {
   e.preventDefault();
   const text = $('#opencode-input').value; if(!text.trim()) return;
-  if (sendPrompt(text)) $('#opencode-input').value = '';
+  const prio = priorityNext;
+  if (sendPrompt(text, prio)) { $('#opencode-input').value = ''; priorityNext = false; $('#prio-btn')?.classList.remove('on'); }
 });
 // quick-action chips + starter prompts
 document.addEventListener('click', (e) => {
@@ -452,19 +498,26 @@ $('#term-input')?.addEventListener('keydown', (e) => {
   else termHistIdx = Math.max(termHistIdx - 1, -1);
   $('#term-input').value = termHistory[termHistory.length - 1 - termHistIdx] || '';
 });
-// key row: Esc/Tab/Ctrl/arrows insert into the command line (line-based shell)
+// key row: line-based shell accessory bar (phone keyboard hides these)
+let shiftSticky = false;
 $('#term-keys')?.addEventListener('click', (e) => {
   const key = e.target.closest('[data-key]'); if (!key) return;
   const input = $('#term-input'); if (!input) return;
   const k = key.dataset.key;
-  if (k === 'up') { if (termHistory.length) input.value = termHistory[termHistory.length - 1]; }
-  else if (k === 'down') { input.value = ''; }
-  else if (k === 'tab') { input.value += '\t'; }
+  const ins = (s) => { input.value += shiftSticky ? s.toUpperCase() : s; input.focus(); };
+  if (k === 'shift') {
+    shiftSticky = !shiftSticky;
+    key.classList.toggle('sticky', shiftSticky);
+  }
+  else if (k === 'enter') { $('#term-form').requestSubmit(); }
+  else if (k === 'up') { if (termHistory.length) input.value = termHistory[termHistory.length - 1]; }
+  else if (k === 'down') { input.value = termHistIdx > 0 ? termHistory[termHistory.length - 1 - (--termHistIdx)] : ''; }
+  else if (k === 'tab') { ins('\t'); }
   else if (k === 'esc') { input.value = ''; }
-  else if (k === 'ctrl') { input.value += '^C'; } // shell sees literal text; kept for muscle memory
-  else if (k === 'left' || k === 'right') { input.setSelectionRange(Math.max(0, input.value.length - 1), Math.max(0, input.value.length - 1)); }
-  else { input.value += k; }
-  input.focus();
+  else if (k === 'ctrl') { input.value += '^C'; }
+  else if (k === 'left' || k === 'right') { const pos = Math.max(0, input.value.length - 1); input.setSelectionRange(pos, pos); }
+  else { ins(k); }
+  if (k !== 'shift' && shiftSticky) { shiftSticky = false; document.querySelector('[data-key="shift"]')?.classList.remove('sticky'); }
 });
 $('#term-copy')?.addEventListener('click', async () => {
   const t = $('#term-out'); if (!t) return;

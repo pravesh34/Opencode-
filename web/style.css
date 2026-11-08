@@ -4,6 +4,11 @@
   --border:#22313C; --border2:#33454F; --danger:#FF8A80; --amber:#F5A524;
   --radius:14px;
 }
+[data-theme="light"]{
+  --bg:#F7F8FA; --panel:#FFFFFF; --panel2:#EEF1F4; --panel3:#E6EBEF;
+  --text:#11181F; --muted:#5B6B76; --accent:#0FA35E; --accent-text:#FFFFFF;
+  --border:#E3E8ED; --border2:#CBD5DC; --danger:#D64545; --amber:#B7791F;
+}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
@@ -178,3 +183,16 @@ input[type=text],input:not([type]),select{width:100%;background:var(--panel2);bo
 
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border2);color:var(--text);padding:12px 18px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:40;max-width:90vw;text-align:center}
 .toast.show{opacity:1}
+
+/* ChatGPT-style: thinking/tool steps in assistant cards, stop/priority, keys */
+.msg .steps{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
+.msg .steps summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.msg .steps pre{white-space:pre-wrap;word-break:break-word;margin:6px 0 0;font-size:12px;line-height:1.55;color:var(--muted)}
+#prio-btn{width:52px;height:52px;min-height:52px;padding:0;display:grid;place-items:center;font-size:20px}
+#prio-btn.on{background:var(--amber);color:#1a1205;border-color:transparent}
+#stop-btn{width:52px;height:52px;min-height:52px;padding:0;border-radius:16px;font-size:16px}
+.key.sticky{background:var(--amber);color:#1a1205}
+.key.enter{background:var(--accent);color:var(--accent-text);font-weight:700;min-width:92px;flex:0 0 auto}
+input,select{font-size:16px}
+[data-theme="light"] .terminal{background:#10151A;color:#9BE3C0}
+[data-theme="light"] .file-preview{background:#10151A}
