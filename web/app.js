@@ -135,13 +135,7 @@ function renderMessages(p, sid) {
   const s = sid ? (p.sessions||[]).find(x=>x.id===sid) : getActiveSession(p);
   const msgs = (s && s.messages)||[];
   if (!msgs.length) {
-    box.innerHTML = `<div class="starter-card"><h3>Start with an idea</h3>
-      <p class="muted small">Describe what you want — OpenCode writes it, you review it. Try:</p>
-      <div class="chips" style="padding:8px 0">
-        <button class="chip" type="button" data-starter="Build a login page for my app.">Build a login page</button>
-        <button class="chip" type="button" data-starter="Fix my last error.">Fix my last error</button>
-        <button class="chip" type="button" data-starter="Explain what this project does.">Explain this project</button>
-      </div></div>`;
+    box.innerHTML = '';
   } else {
     box.innerHTML = msgs.map(m => {
       if (m.role === 'assistant') {
