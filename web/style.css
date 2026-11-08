@@ -1,24 +1,26 @@
 :root{
-  /* NEON FORGE — dark graphite + lime + terminal green + indigo AI */
-  --bg:#101411; --panel:#191F1B; --panel2:#252E28; --panel3:#1D241F;
-  --text:#F2F5EF; --muted:#9BA89D; --faint:#657168;
-  --accent:#B6F36B; --accent-text:#101411;
-  --success:#42D392; --ai:#8B91FF; --warning:#F5BE65; --danger:#FF7272;
-  --border:#303B33; --border2:#3A4740;
-  --term-bg:#0D110F; --term-fg:#C5D2C8;
-  --radius:14px;
+  /* Aether Sakura — night plum + sakura pink + lilac (dark primary theme) */
+  --bg:#1A0F1E; --panel:#2A1B2F; --panel2:#3E2743; --panel3:#33203A;
+  --text:#FDE8F1; --muted:#C9A0C4; --faint:#8A6E92;
+  --accent:#F2B6D6; --accent-text:#3E2743;
+  --success:#7CE3B1; --ai:#C7B2FF; --warning:#F5BE65; --danger:#FF7272;
+  --border:#3E2743; --border2:#4D3553;
+  --term-bg:#0D0810; --term-fg:#E8D9E4;
+  --radius:16px;
   --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --display:Georgia,"Times New Roman",serif;
 }
 [data-theme="light"]{
-  --bg:#F7F8FA; --panel:#FFFFFF; --panel2:#EEF1F4; --panel3:#E6EBEF;
-  --text:#11181F; --muted:#5B6B76; --accent:#0B7A55; --accent-text:#FFFFFF;
-  --success:#0B9668; --ai:#5B5BD6; --warning:#B7791F; --danger:#D64545;
-  --border:#E3E8ED; --border2:#CBD5DC;
-  --term-bg:#10151A; --term-fg:#9BE3C0;
+  --bg:#FDF6F9; --panel:#FFFFFF; --panel2:#F9E9F1; --panel3:#F3DCE7;
+  --text:#2A1B2F; --muted:#7A5F7E; --accent:#D97CB0; --accent-text:#FFFFFF;
+  --success:#2E9E6B; --ai:#8B7FE0; --warning:#B7791F; --danger:#D64545;
+  --border:#EAD3E0; --border2:#D9B9CC;
+  --term-bg:#1A0F1E; --term-fg:#E8D9E4;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
+.side-head h1,.chat-head .title,h2{font-family:var(--display)}
 button,input,select{font:inherit}
 a{color:var(--accent)}
 
@@ -51,6 +53,17 @@ a{color:var(--accent)}
 .search input::placeholder{color:var(--faint)}
 .search input:focus{border-color:var(--accent)}
 .section-label{padding:2px 16px 8px;font-size:13px;color:var(--muted)}
+.nav-cards{display:flex;flex-direction:column;gap:10px;padding:0 16px 16px}
+.nav-card{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:16px;background:var(--panel);border:1px solid var(--border);cursor:pointer;text-align:left;color:var(--text);width:100%}
+.nav-card .ic{width:44px;height:44px;border-radius:12px;background:var(--panel2);display:grid;place-items:center;font-size:20px;flex:0 0 auto}
+.nav-card .tt{font-weight:700;font-size:15px}
+.nav-card .sb{font-size:13px;color:var(--muted);margin-top:3px}
+.nav-card .go{margin-left:auto;color:var(--muted);font-size:20px}
+.nav-card.ai{background:var(--accent);border-color:transparent;color:var(--accent-text)}
+.nav-card.ai .ic{background:rgba(255,255,255,.22)}
+.nav-card.ai .sb{color:var(--accent-text);opacity:.85}
+.nav-card.ai .go{color:var(--accent-text)}
+.nav-card .sdot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
 .project-list{flex:1;overflow-y:auto;padding:0 16px;display:flex;flex-direction:column;gap:12px;min-height:0}
 .project-item{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--panel);border-radius:16px;cursor:pointer;min-height:72px;border:1px solid transparent}
 .project-item:hover{background:var(--panel3)}
@@ -109,7 +122,7 @@ a{color:var(--accent)}
 #project-messages{display:flex;flex-direction:column;gap:12px;padding:8px 16px 12px;flex:1;overflow-y:auto;min-height:0}
 .msg-group{display:flex;flex-direction:column;gap:8px}
 .msg{max-width:min(85%,560px);padding:10px 12px;font-size:15px;line-height:1.45;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word}
-.msg.user{align-self:flex-end;background:var(--panel2);border-radius:16px 16px 4px 16px;max-width:80%}
+.msg.user{align-self:flex-end;background:var(--accent);color:var(--accent-text);border-radius:16px 16px 4px 16px;max-width:80%}
 .msg.assistant{align-self:flex-start;background:var(--panel);border-radius:16px 16px 16px 4px;border:1px solid var(--border)}
 .msg.system{align-self:center;background:transparent;color:var(--muted);font-size:13px;text-align:center;max-width:95%}
 .msg-time{font-size:11px;color:var(--faint);line-height:1.2}

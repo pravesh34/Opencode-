@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"/>
-<meta name="theme-color" content="#101411"/>
+<meta name="theme-color" content="#1A0F1E"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -29,6 +29,23 @@
       </div>
     </div>
     <div class="search"><span class="search-icon" aria-hidden="true">⌕</span><input id="project-search" placeholder="Search projects…" autocomplete="off" aria-label="Search projects"/></div>
+    <div class="nav-cards">
+      <button class="nav-card ai" id="card-ai-agent" type="button">
+        <span class="ic">✦</span>
+        <span><span class="tt">AI Agent</span><br><span class="sb">Plan · Code · Run</span></span>
+        <span class="go">→</span>
+      </button>
+      <button class="nav-card" id="card-remote" type="button">
+        <span class="ic">⌨</span>
+        <span><span class="tt">Remote Machines</span><br><span class="sb" id="remote-sub">Checking…</span></span>
+        <span class="go">→</span>
+      </button>
+      <button class="nav-card" id="card-projects" type="button">
+        <span class="ic">📁</span>
+        <span><span class="tt">Projects</span><br><span class="sb" id="projects-count">0 repositories</span></span>
+        <span class="go">→</span>
+      </button>
+    </div>
     <div class="section-label" id="recent-label">Recent</div>
     <div class="project-list" id="project-list"></div>
     <button class="fab" id="fab-new-project" type="button">＋ New project</button>
