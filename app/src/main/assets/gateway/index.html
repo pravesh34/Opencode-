@@ -18,25 +18,27 @@
 <div class="app" id="app">
   <aside class="sidebar" id="sidebar">
     <div class="side-head">
-      <div>
+      <div class="side-head-main">
         <h1 id="user-name">Code-Go</h1>
-        <div class="subtitle" id="user-sub" style="font-size:13px;color:var(--muted)">Projects</div>
+        <div class="subtitle" id="user-sub">Projects</div>
       </div>
-      <div class="spacer"></div>
-      <span id="health" class="conn-pill"><span class="dot"></span><span id="health-text">…</span></span>
-      <button class="icon-btn" id="theme-btn" title="Dark / light mode" aria-label="Theme">◑</button>
-      <button class="icon-btn" id="new-project-btn" title="New project">＋</button>
+      <div class="side-head-actions">
+        <span id="health" class="conn-pill"><span class="dot"></span><span id="health-text">…</span></span>
+        <button class="icon-btn" id="theme-btn" title="Dark / light mode" aria-label="Toggle theme">◑</button>
+        <button class="icon-btn" id="new-project-btn" title="New project" aria-label="New project">＋</button>
+      </div>
     </div>
-    <div class="search"><input id="project-search" placeholder="Search projects…" autocomplete="off"/></div>
+    <div class="search"><span class="search-icon" aria-hidden="true">⌕</span><input id="project-search" placeholder="Search projects…" autocomplete="off" aria-label="Search projects"/></div>
     <div class="section-label" id="recent-label">Recent</div>
     <div class="project-list" id="project-list"></div>
     <button class="fab" id="fab-new-project" type="button">＋ New project</button>
-    <div class="side-foot">
+    <div class="side-foot" role="navigation" aria-label="Project actions">
       <button class="nav-btn" id="nav-home" type="button">Home</button>
-      <button class="nav-btn" id="nav-files" data-view="files">Workspace</button>
-      <button class="nav-btn" id="nav-terminal" data-view="terminal">Terminal</button>
+      <button class="nav-btn" id="nav-files" data-view="files" title="Files in the selected project’s folder">Files</button>
+      <button class="nav-btn" id="nav-terminal" data-view="terminal" title="Terminal in the selected project’s folder">Terminal</button>
       <button class="nav-btn" id="nav-settings" data-view="settings">Settings</button>
     </div>
+    <div class="side-foot-note">Files &amp; Terminal run in the selected project’s folder.</div>
   </aside>
 
   <section class="main" id="main">
@@ -78,12 +80,15 @@
       </div>
       <form class="composer" id="opencode-form">
         <input type="file" id="attach-file" accept="image/*,.txt,.md,.pdf" hidden/>
-        <button class="btn secondary" type="button" id="attach-btn" aria-label="Attach file" title="Attach image / file">📎</button>
-        <textarea id="opencode-input" placeholder="Describe what to build" rows="1" maxlength="8000"></textarea>
-        <button class="btn secondary" type="button" id="mic-btn" aria-label="Voice input" title="Voice input">🎙</button>
-        <button class="btn secondary" type="button" id="prio-btn" aria-label="Priority" title="Force next message to the front (pre-empts current run)">⚡</button>
+        <button class="btn secondary composer-icon" type="button" id="attach-btn" aria-label="Attach file" title="Attach image / file">📎</button>
+        <div class="composer-input-wrap">
+          <textarea id="opencode-input" placeholder="Describe what to build" rows="1" maxlength="8000" aria-label="Message"></textarea>
+          <span class="char-count" id="char-count" aria-hidden="true">0</span>
+        </div>
+        <button class="btn secondary composer-icon" type="button" id="mic-btn" aria-label="Voice input" title="Voice input">🎙</button>
+        <button class="btn secondary composer-icon" type="button" id="prio-btn" aria-label="Priority" title="Force next message to the front">⚡</button>
         <button class="btn danger hidden" type="button" id="stop-btn" aria-label="Stop">■</button>
-        <button class="btn" type="submit" id="send-btn" aria-label="Send">↑</button>
+        <button class="btn composer-send" type="submit" id="send-btn" aria-label="Send">↑</button>
       </form>
     </div>
 
@@ -154,21 +159,36 @@
     <div id="view-files" class="content" style="display:none;flex-direction:column">
       <div class="chat-head">
         <button class="icon-btn back" id="back-files" title="Back">←</button>
-        <div class="avatar" style="width:40px;height:40px;font-size:16px;background:#333">📂</div>
         <div class="title-wrap">
-          <div class="title">Files</div>
-          <div class="subtitle" id="files-subtitle">Browse project files</div>
+          <div class="title" id="files-folder-name">Files</div>
+          <div class="subtitle" id="files-subtitle" title="">Browse project files</div>
         </div>
         <button class="icon-btn" id="files-refresh" title="Refresh">↻</button>
       </div>
       <div class="files-wrap">
-        <div class="files-bar">
+        <span id="files-path" class="files-path-hidden" aria-hidden="true"></span>
+        <button class="files-breadcrumb" id="files-crumb" type="button" title="Show full path">—</button>
+        <div class="files-toolbar">
           <button class="btn secondary small" id="files-up" type="button">Up</button>
-          <div class="kv" id="files-path" style="flex:1;overflow:auto;white-space:nowrap">—</div>
+          <input class="files-filter" id="files-filter" placeholder="Filter files…" autocomplete="off" aria-label="Filter files"/>
+          <button class="btn secondary small" id="files-copy" type="button" title="Copy full path">Copy path</button>
         </div>
         <div class="files-split">
           <div class="file-list" id="file-list"></div>
           <div class="file-preview" id="file-preview"><div class="muted small" style="padding:12px">Select a file to preview</div></div>
+        </div>
+        <button class="files-fab" id="files-new-fab" type="button" title="New file / folder">＋</button>
+      </div>
+    </div>
+
+    <!-- Full-path bottom sheet -->
+    <div class="sheet-back" id="files-sheet-back">
+      <div class="sheet" id="files-sheet" role="dialog" aria-label="Full path">
+        <div class="sheet-title">Full path</div>
+        <div class="sheet-path" id="files-sheet-path">—</div>
+        <div class="sheet-actions">
+          <button class="btn secondary" id="files-sheet-copy" type="button">Copy path</button>
+          <button class="btn" id="files-sheet-close" type="button">Close</button>
         </div>
       </div>
     </div>

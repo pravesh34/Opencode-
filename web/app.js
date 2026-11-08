@@ -8,6 +8,45 @@ const ACTIVE_KEY = 'og_active_project';
 const COLORS = ['#00a884','#53bdeb','#d4a373','#e879f9','#f87171','#fbbf24','#34d399','#60a5fa','#a78bfa','#fb7185'];
 function uid() { return 'p_' + Math.random().toString(36).slice(2, 10); }
 function esc(s){ return String(s||''); }
+// ---------- Helpers (UI-only) ----------
+function timeAgo(ts){
+  if(!ts) return 'Never edited';
+  const s = Math.max(1, Math.floor((Date.now()-ts)/1000));
+  if(s<60) return 'Edited just now';
+  if(s<3600) return `Edited ${Math.floor(s/60)}m ago`;
+  if(s<86400) return `Edited ${Math.floor(s/3600)}h ago`;
+  const d = Math.floor(s/86400);
+  return `Edited ${d}d ago`;
+}
+function timeLabel(ts){
+  if(!ts) return '';
+  try{ return new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }catch{ return ''; }
+}
+function middleEllipsis(str, max=44){
+  const s = String(str||''); if(s.length<=max) return s;
+  const keep = Math.max(10, max-1);
+  const head = Math.ceil(keep*0.45), tail = Math.floor(keep-head);
+  return s.slice(0, head) + '…' + s.slice(-tail);
+}
+function shortPath(p){
+  if(!p) return 'no folder';
+  const parts = String(p).split('/').filter(Boolean);
+  if(parts.length<=2) return (String(p).startsWith('/')?'/':'')+parts.join('/');
+  return '… / ' + parts.slice(-2).join(' / ');
+}
+function folderName(p){
+  const parts = String(p||'').split('/').filter(Boolean);
+  return parts[parts.length-1] || 'Files';
+}
+function fileIcon(e){
+  if(e.type==='dir') return '📁';
+  if(e.type==='link') return '🔗';
+  const n = String(e.name||'').toLowerCase();
+  if(/\.(png|jpg|jpeg|gif|svg|webp)$/.test(n)) return '🖼';
+  if(/\.(js|ts|tsx|jsx|json|kt|html|css|md|gradle|sh)$/.test(n)) return '📄';
+  if(/\.(zip|tar|gz|apk)$/.test(n)) return '📦';
+  return '📄';
+}
 
 // ---------- Username (header) — defaults to Pravesh Sharma, editable in Settings ----------
 let userName = localStorage.getItem('og_username') || 'Pravesh Sharma';
@@ -106,25 +145,24 @@ function renderProjectList() {
   const list = $('#project-list'); if (!list) return;
   const q = ($('#project-search')?.value || '').toLowerCase();
   const items = projects.filter(p => !q || p.name.toLowerCase().includes(q) || (p.cwd||'').toLowerCase().includes(q));
-  const dotCls = gatewayOnline ? 'on' : 'off';
   list.innerHTML = items.map(p => {
     const s = getActiveSession(p);
     const msgs = (s && s.messages) || [];
-    const lastUser = msgs.filter(m=>m.role==='user').slice(-1)[0];
-    // Reference style: "main · Last: Fix chart colors" — no long paths here.
+    const lastMsg = msgs.slice(-1)[0];
+    const lastTs = lastMsg && lastMsg.time ? lastMsg.time : null;
     const br = gitBranch || 'main';
-    const preview = lastUser
-      ? `${br} · Last: ${(lastUser.text||'').replace(/\s+/g,' ').slice(0, 45)}`
-      : `${br} · No messages yet`;
-    const av = p.icon || (p.name||'P').trim().charAt(0).toUpperCase();
+    const pathLine = p.cwd ? shortPath(p.cwd) : 'no folder';
+    const edited = lastTs ? timeAgo(lastTs) : 'No messages yet';
     const status = gatewayOnline
       ? '<span class="project-status"><span class="sdot on"></span>Running</span>'
       : '<span class="project-status"><span class="sdot amber"></span>Stopped</span>';
-    return `<div class="project-item ${p.id===activeProjectId && activeView==='chat' ? 'active':''}" data-id="${p.id}">
-      <div class="avatar" style="background:${p.color||COLORS[0]}">${av}</div>
+    const av = p.icon || (p.name||'P').trim().charAt(0).toUpperCase();
+    return `<div class="project-item ${p.id===activeProjectId && activeView==='chat' ? 'active':''}" data-id="${p.id}" role="button" tabindex="0">
+      <div class="avatar" style="background:${p.color||COLORS[0]}">${escapeHtml(av)}</div>
       <div class="project-meta">
         <div class="name">${escapeHtml(p.name||'Project')}</div>
-        <div class="sub">${escapeHtml(preview)}</div>
+        <div class="path" title="${escapeHtml(p.cwd||'')}">${escapeHtml(pathLine)}</div>
+        <div class="meta">${edited} · ${br}</div>
       </div>
       ${status}
     </div>`;
@@ -143,28 +181,94 @@ function renderSessionTabs(p) {
   const s = getActiveSession(p); const sel = $('#session-model');
   if (sel) sel.value = (s && s.model) || '';
 }
+// True only when the reply actually contains a diff / code change.
+function hasDiff(text){
+  const t = String(text||'');
+  if(/```\s*diff/i.test(t)) return true;
+  if(/^diff --git /m.test(t)) return true;
+  const lines = t.split('\n').filter(l => /^[+-](?![+-])\s*\S/.test(l));
+  // at least 2 changed lines in a code block
+  const inCode = /```[\s\S]*?\n[+-]/m.test(t);
+  return inCode && lines.length >= 2;
+}
 function renderMessages(p, sid) {
   const box = $('#project-messages'); if (!box) return;
   p = p || getProject(); if (!p) { box.innerHTML=''; return; }
   const s = sid ? (p.sessions||[]).find(x=>x.id===sid) : getActiveSession(p);
   const msgs = (s && s.messages)||[];
   if (!msgs.length) {
-    box.innerHTML = '';
-  } else {
-    // AI replies apply immediately — no Accept/Undo buttons. Revert by asking in chat.
-    box.innerHTML = msgs.map(m => `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`).join('');
+    box.innerHTML = `<div class="starter-card">
+      <h3>Start with an idea</h3>
+      <p>Pick one to begin — it sends in this project.</p>
+      <div class="starter-chips">
+        <button class="chip" type="button" data-starter="Explain this project in simple words, then suggest 3 improvements.">Explain this project</button>
+        <button class="chip" type="button" data-starter="Review this project and fix the first issue you find.">Fix first issue</button>
+        <button class="chip" type="button" data-starter="Add a new small feature: ">Add a feature</button>
+      </div>
+    </div>`;
+    return;
   }
+  // Group consecutive messages from the same sender (gap 8dp inside, 12dp between groups).
+  const groups = [];
+  for (const m of msgs) {
+    const g = groups[groups.length-1];
+    if (g && g.role === m.role) g.msgs.push(m);
+    else groups.push({ role: m.role, msgs: [m] });
+  }
+  box.innerHTML = groups.map(g => {
+    const last = g.msgs[g.msgs.length-1];
+    const t = last.time ? timeLabel(last.time) : '';
+    const bubbles = g.msgs.map(m => `<div class="msg ${m.role}">${escapeHtml(m.text)}</div>`).join('');
+    let actions = '';
+    if (g.role === 'assistant' && last) {
+      if (hasDiff(last.text)) {
+        actions = `<div class="msg-actions">
+          <button class="btn secondary small" type="button" data-act="accept">Accept</button>
+          <button class="btn secondary small" type="button" data-act="undo">Undo</button>
+        </div>`;
+      } else {
+        actions = `<div class="msg-actions">
+          <button class="btn secondary small" type="button" data-act="copy">Copy</button>
+          <button class="btn secondary small" type="button" data-act="regen">Regenerate</button>
+        </div>`;
+      }
+    }
+    return `<div class="msg-group ${g.role}">${bubbles}${t ? `<div class="msg-time">${escapeHtml(t)}</div>` : ''}${actions}</div>`;
+  }).join('');
   box.scrollTop = box.scrollHeight;
+  // Copy / Regenerate on each assistant group; Accept / Undo only toast (no backend change).
+  box.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const grp = btn.closest('.msg-group');
+      // Find the assistant text of this group (last bubble)
+      const bubble = grp && grp.querySelector('.msg.assistant');
+      const text = bubble ? bubble.textContent : '';
+      const act = btn.dataset.act;
+      if (act === 'copy') {
+        try { await navigator.clipboard.writeText(text); toast('Copied'); }
+        catch { toast('Copy failed — long-press to select'); }
+      } else if (act === 'regen') {
+        const lastUser = msgs.filter(m=>m.role==='user').slice(-1)[0];
+        if (lastUser) sendPrompt(lastUser.text, false);
+        else toast('Nothing to regenerate');
+      } else if (act === 'accept') toast('Change accepted ✓');
+      else if (act === 'undo') toast('Ask in chat to revert this change');
+    });
+  });
 }
-// (No Accept/Undo buttons — changes apply directly; revert by asking in chat.)
 function addSessionMessage(p, sid, role, text, persist=true) {
   if (!p) return;
   const s = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p); if (!s) return;
-  if (persist) { s.messages = s.messages || []; s.messages.push({ role, text: String(text) }); if (s.messages.length > 300) s.messages = s.messages.slice(-300); saveProjects(); }
+  if (persist) { s.messages = s.messages || []; s.messages.push({ role, text: String(text), time: Date.now() }); if (s.messages.length > 300) s.messages = s.messages.slice(-300); saveProjects(); }
   if (activeProjectId === p.id && p.activeSessionId === s.id && activeView === 'chat') {
     const box = $('#project-messages'); if (!box) return;
+    // Clear starter card on first message
+    if (box.querySelector('.starter-card')) { renderMessages(p, sid); return; }
+    const grp = document.createElement('div'); grp.className = 'msg-group ' + role;
     const el = document.createElement('div'); el.className = 'msg ' + role; el.textContent = String(text);
-    box.appendChild(el); box.scrollTop = box.scrollHeight;
+    const tl = document.createElement('div'); tl.className = 'msg-time'; tl.textContent = timeLabel(Date.now());
+    grp.appendChild(el); grp.appendChild(tl);
+    box.appendChild(grp); box.scrollTop = box.scrollHeight;
   }
   if (role === 'user' || role === 'assistant') renderProjectList();
 }
@@ -228,8 +332,8 @@ function showChatView() {
   $('#view-empty').style.display='none';
   const av = p.icon || (p.name||'P').trim().charAt(0).toUpperCase();
   $('#chat-avatar').textContent = av; $('#chat-avatar').style.background = p.color || COLORS[0];
-  $('#chat-title').textContent = p.name || 'Project';
-  $('#chat-subtitle').textContent = chatSubtitle(p);
+  const ct = $('#chat-title'); if (ct) { ct.textContent = p.name || 'Project'; ct.title = p.name || 'Project'; }
+  const cs = $('#chat-subtitle'); const sub = chatSubtitle(p); if (cs) { cs.textContent = sub; cs.title = sub; }
   renderSessionTabs(p);
   renderMessages(p);
   $('#app').classList.add('show-main');
@@ -363,9 +467,10 @@ function finalizeAssistantStream(p, sid) {
   const sObj = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p);
   const key = streamKey(p.id, sObj && sObj.id); const st = streams[key];
   if (st && st.text && sObj) {
-    sObj.messages = sObj.messages || []; sObj.messages.push({ role:'assistant', text: st.text });
+    sObj.messages = sObj.messages || []; sObj.messages.push({ role:'assistant', text: st.text, time: Date.now() });
     if (sObj.messages.length > 300) sObj.messages = sObj.messages.slice(-300);
     saveProjects(); renderProjectList();
+    if (activeProjectId===p.id && p.activeSessionId===sObj.id) renderMessages(p, sObj.id);
   }
   delete streams[key];
 }
@@ -435,13 +540,18 @@ $('#opencode-form').addEventListener('submit', e => {
   e.preventDefault();
   const text = $('#opencode-input').value; if(!text.trim()) return;
   const prio = priorityNext;
-  if (sendPrompt(text, prio)) { $('#opencode-input').value = ''; autoGrowComposer(); priorityNext = false; $('#prio-btn')?.classList.remove('on'); }
+  if (sendPrompt(text, prio)) { $('#opencode-input').value = ''; autoGrowComposer(); updateCharCount(); priorityNext = false; $('#prio-btn')?.classList.remove('on'); }
 });
-// multiline composer: auto-grow, Enter sends, Shift+Enter newline
+// composer: auto-grow, Enter sends, Shift+Enter newline. Counter lives INSIDE the field.
+function updateCharCount(){
+  const t = $('#opencode-input'); const c = $('#char-count');
+  if (c && t) c.textContent = String(t.value.length);
+}
 function autoGrowComposer() {
   const t = $('#opencode-input'); if (!t) return;
   t.style.height = 'auto';
   t.style.height = Math.min(t.scrollHeight, 140) + 'px';
+  updateCharCount();
 }
 $('#opencode-input')?.addEventListener('input', autoGrowComposer);
 $('#opencode-input')?.addEventListener('keydown', (e) => {
@@ -725,32 +835,63 @@ $('#proj-delete').addEventListener('click', () => {
   toast('Project deleted');
 });
 
-// ---------- File explorer ----------
+// ---------- File explorer (UI-only; same /api/fs/* calls) ----------
 let filesCwd = '';
+let filesEntries = [];
+let filesFilter = '';
+function formatBytes(n){
+  if(n==null || n===undefined) return '';
+  if(n<1024) return n+' B';
+  if(n<1048576) return Math.round(n/1024)+' KB';
+  return (n/1048576).toFixed(1)+' MB';
+}
+function updateFilesHeader(){
+  const title = $('#files-folder-name');
+  const sub = $('#files-subtitle');
+  const crumb = $('#files-crumb');
+  const hidden = $('#files-path');
+  if (title) title.textContent = filesCwd ? folderName(filesCwd) : 'Files';
+  if (sub) { sub.textContent = filesCwd ? middleEllipsis(filesCwd, 48) : 'Browse project files'; sub.title = filesCwd || ''; }
+  if (crumb) { crumb.textContent = filesCwd ? shortPath(filesCwd) : '—'; crumb.title = 'Show full path'; }
+  if (hidden) hidden.textContent = filesCwd || '';
+}
+function renderFileEntries(){
+  const list = $('#file-list'); if(!list) return;
+  const q = (filesFilter||'').toLowerCase();
+  const entries = filesEntries.filter(e => !q || e.name.toLowerCase().includes(q));
+  if (!entries.length) {
+    list.innerHTML = `<div class="muted small" style="padding:12px">${q ? 'No match for filter' : 'Empty folder'}</div>`;
+    return;
+  }
+  list.innerHTML = entries.map(e => {
+    const icon = fileIcon(e);
+    const meta = e.type==='dir' ? 'Folder' : (e.type==='link' ? 'Shortcut' : (e.size ? formatBytes(e.size) : 'File'));
+    return `<div class="file-item" data-name="${escapeHtml(e.name)}" data-type="${e.type}" role="button" tabindex="0"><span class="fi" aria-hidden="true">${icon}</span><span class="file-main"><span class="file-name">${escapeHtml(e.name)}</span><span class="file-meta">${meta}</span></span></div>`;
+  }).join('');
+  list.querySelectorAll('.file-item').forEach(el => el.addEventListener('click', () => {
+    const name = el.dataset.name; const type = el.dataset.type; const full = filesCwd.replace(/\/$/,'') + '/' + name;
+    if (type==='dir') loadFileList(full);
+    else openFilePreview(full);
+  }));
+}
 function openFileExplorer() {
   const p = getProject();
   filesCwd = (p && p.cwd) || filesCwd || defaultCwd || '';
+  updateFilesHeader();
   loadFileList(filesCwd);
 }
 async function loadFileList(dir) {
-  const list = $('#file-list'); const pathEl = $('#files-path'); const prev = $('#file-preview');
-  if (!dir) { list.innerHTML = '<div class="muted small" style="padding:12px">No folder set</div>'; return; }
+  const list = $('#file-list'); const prev = $('#file-preview');
+  if (!dir) { list.innerHTML = '<div class="muted small" style="padding:12px">No folder set</div>'; filesEntries=[]; updateFilesHeader(); return; }
   list.innerHTML = '<div class="muted small" style="padding:12px">Loading…</div>';
   try {
     const r = await fetch('/api/fs/list?path=' + encodeURIComponent(dir));
     const j = await r.json();
     if (j.error) throw new Error(j.error);
-    filesCwd = j.path; if (pathEl) pathEl.textContent = j.path; if ($('#files-subtitle')) $('#files-subtitle').textContent = j.path.replace(/^\/Users\/[^/]+/,'~');
-    list.innerHTML = (j.entries||[]).map(e => {
-      const icon = e.type==='dir' ? '📁' : (e.type==='link'?'🔗':'📄');
-      const size = e.type==='file' && e.size ? (e.size<1024?e.size+'B':(e.size<1048576?Math.round(e.size/1024)+'KB':(e.size/1048576).toFixed(1)+'MB')) : '';
-      return `<div class="file-item" data-name="${escapeHtml(e.name)}" data-type="${e.type}"><span class="fi">${icon}</span><span class="fn">${escapeHtml(e.name)}</span><span class="fm">${size}</span></div>`;
-    }).join('') || '<div class="muted small" style="padding:12px">Empty folder</div>';
-    list.querySelectorAll('.file-item').forEach(el => el.addEventListener('click', () => {
-      const name = el.dataset.name; const type = el.dataset.type; const full = filesCwd.replace(/\/$/,'') + '/' + name;
-      if (type==='dir') loadFileList(full);
-      else openFilePreview(full);
-    }));
+    filesCwd = j.path;
+    filesEntries = j.entries || [];
+    updateFilesHeader();
+    renderFileEntries();
   } catch (e) { list.innerHTML = `<div class="muted small" style="padding:12px">Error: ${escapeHtml(e.message||e)}</div>`; }
 }
 async function openFilePreview(filePath) {
@@ -760,11 +901,38 @@ async function openFilePreview(filePath) {
     const r = await fetch('/api/fs/read?path=' + encodeURIComponent(filePath));
     const j = await r.json();
     if (j.error) throw new Error(j.error);
-    prev.innerHTML = `<div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)">${escapeHtml(j.path)}</div><pre>${escapeHtml(j.content||'')}</pre>`;
+    prev.innerHTML = `<div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(middleEllipsis(j.path, 64))}</div><pre>${escapeHtml(j.content||'')}</pre>`;
   } catch (e) { prev.innerHTML = `<div class="muted small" style="padding:12px">Error: ${escapeHtml(e.message||e)}</div>`; }
 }
+function copyTextToClipboard(txt, msg){
+  const t = String(txt||'');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).then(()=>toast(msg||'Copied')).catch(()=>toast('Copy failed'));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = t; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast(msg||'Copied'); } catch { toast('Copy failed'); }
+    ta.remove();
+  }
+}
+function showFilesSheet(){
+  const back = $('#files-sheet-back'); const pathEl = $('#files-sheet-path');
+  if (!back) return;
+  if (pathEl) pathEl.textContent = filesCwd || '—';
+  back.classList.add('show');
+}
+function hideFilesSheet(){ $('#files-sheet-back')?.classList.remove('show'); }
 $('#files-up').addEventListener('click', ()=>{ if(filesCwd) loadFileList(filesCwd.replace(/\/[^/]+\/?$/,'')||'/'); });
 $('#files-refresh').addEventListener('click', ()=>loadFileList(filesCwd));
+$('#files-copy')?.addEventListener('click', ()=>copyTextToClipboard(filesCwd, 'Path copied'));
+$('#files-crumb')?.addEventListener('click', showFilesSheet);
+$('#files-sheet-close')?.addEventListener('click', hideFilesSheet);
+$('#files-sheet-copy')?.addEventListener('click', ()=>copyTextToClipboard(filesCwd, 'Path copied'));
+$('#files-sheet-back')?.addEventListener('click', (e)=>{ if(e.target.id==='files-sheet-back') hideFilesSheet(); });
+$('#files-filter')?.addEventListener('input', (e)=>{ filesFilter = e.target.value||''; renderFileEntries(); });
+// FAB — no new API; routes the user to the terminal where files are created.
+$('#files-new-fab')?.addEventListener('click', ()=>{ toast('Use Terminal to create: touch newfile'); setMainView('terminal'); });
 $('#back-files').addEventListener('click', backToList);
 $('#nav-home')?.addEventListener('click', backToList);
 $('#nav-files').addEventListener('click', ()=>setMainView('files'));

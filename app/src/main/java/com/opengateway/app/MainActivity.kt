@@ -17,9 +17,11 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.text.InputType
+import android.animation.ValueAnimator
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.webkit.*
 import android.widget.EditText
 import android.widget.ImageView
@@ -59,6 +61,43 @@ class MainActivity : AppCompatActivity() {
     private var currentUrl: String = ""
     private var lastErrorDescription: String? = null
     private var lastErrorUrl: String? = null
+    private var progressAnimator: ValueAnimator? = null
+
+    private fun startActivitySmooth(intent: Intent) {
+        startActivity(intent)
+        overridePendingTransition(R.anim.fade_in_up, R.anim.fade_out_up)
+    }
+    private fun finishSmooth() {
+        finish()
+        overridePendingTransition(R.anim.fade_in_up, R.anim.fade_out_up)
+    }
+    private fun fadeIn(view: View) {
+        if (view.visibility != View.VISIBLE) {
+            view.alpha = 0f
+            view.visibility = View.VISIBLE
+        }
+        view.animate().alpha(1f).setDuration(280).setInterpolator(DecelerateInterpolator()).start()
+    }
+    private fun fadeOut(view: View, onEnd: (() -> Unit)? = null) {
+        view.animate().alpha(0f).setDuration(220).setInterpolator(DecelerateInterpolator()).withEndAction {
+            view.visibility = View.GONE
+            view.alpha = 1f
+            onEnd?.invoke()
+        }.start()
+    }
+    private fun animateProgressTo(ratio: Float) {
+        try { progressAnimator?.cancel() } catch (_: Exception) {}
+        if (ratio <= 0f || ratio >= 1f) {
+            progressFill.setScaleX(ratio.coerceIn(0f, 1f))
+            return
+        }
+        progressAnimator = ValueAnimator.ofFloat(progressFill.scaleX, ratio).apply {
+            duration = 200
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { progressFill.setScaleX(it.animatedValue as Float) }
+            start()
+        }
+    }
 
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private val fileChooserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -80,7 +119,7 @@ class MainActivity : AppCompatActivity() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             runOnUiThread {
-                offlineBanner.visibility = View.GONE
+                fadeOut(offlineBanner)
                 Snackbar.make(webView, R.string.online, Snackbar.LENGTH_SHORT).show()
                 if (hasFinishedFirstLoad && lastErrorDescription != null) {
                     // auto-retry once when back online
@@ -90,14 +129,14 @@ class MainActivity : AppCompatActivity() {
         }
         override fun onLost(network: Network) {
             runOnUiThread {
-                offlineBanner.visibility = View.VISIBLE
+                fadeIn(offlineBanner)
                 Snackbar.make(webView, R.string.offline, Snackbar.LENGTH_LONG).show()
             }
         }
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
             val hasNet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                     caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            runOnUiThread { offlineBanner.visibility = if (hasNet) View.GONE else View.VISIBLE }
+            runOnUiThread { refreshOfflineBanner() }
         }
     }
 
@@ -124,6 +163,8 @@ class MainActivity : AppCompatActivity() {
         progressFill.pivotX = 0f
         progressFill.scaleX = 0f
         progressFill.visibility = View.GONE
+        // smooth launch: WebView fades in only after first page finishes
+        webView.alpha = 0f
 
         // Edge-to-edge insets: keep content below toolbar / bars
         ViewCompat.setOnApplyWindowInsetsListener(swipe) { v, insets ->
@@ -171,13 +212,16 @@ class MainActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 if (url != null) { currentUrl = url; lastErrorDescription = null }
                 progressFill.visibility = View.VISIBLE
-                progressFill.setScaleX(0f)
+                animateProgressTo(0f)
                 hideError()
+                // smooth cross-fade: dim while loading, fade back on finish
+                webView.animate().alpha(0.85f).setDuration(160).start()
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 progressFill.visibility = View.GONE
                 progressFill.setScaleX(0f)
                 swipe.isRefreshing = false
+                webView.animate().alpha(1f).setDuration(300).setInterpolator(DecelerateInterpolator()).start()
                 if (!hasFinishedFirstLoad) {
                     hasFinishedFirstLoad = true
                     fadeOutSplash()
@@ -226,7 +270,7 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (newProgress in 1..99) {
                     progressFill.visibility = View.VISIBLE
-                    progressFill.setScaleX(newProgress / 100f)
+                    animateProgressTo(newProgress / 100f)
                 } else if (newProgress == 100) {
                     progressFill.visibility = View.GONE
                     progressFill.setScaleX(0f)
@@ -384,8 +428,8 @@ class MainActivity : AppCompatActivity() {
             R.id.menu_switch -> { webView.loadUrl(currentUrl); true }
             // Reconnect: reload reconnects the WebSocket + health check
             R.id.menu_reload -> { webView.reload(); true }
-            R.id.menu_native_terminal -> { startActivity(Intent(this, NativeTerminalActivity::class.java)); true }
-            R.id.menu_opencode_setup -> { startActivity(Intent(this, OpenCodeSetupActivity::class.java)); true }
+            R.id.menu_native_terminal -> { startActivitySmooth(Intent(this, NativeTerminalActivity::class.java)); true }
+            R.id.menu_opencode_setup -> { startActivitySmooth(Intent(this, OpenCodeSetupActivity::class.java)); true }
             R.id.menu_gateway_start -> { GatewayService.start(this); Toast.makeText(this, getString(R.string.gateway_starting), Toast.LENGTH_SHORT).show(); true }
             R.id.menu_gateway_stop -> { GatewayService.stop(this); Toast.makeText(this, getString(R.string.gateway_stopping), Toast.LENGTH_SHORT).show(); true }
             R.id.menu_settings -> { showSettingsDialog(); true }
@@ -490,7 +534,7 @@ class MainActivity : AppCompatActivity() {
         lastErrorUrl = url
         errorTitle.text = title
         errorSubtitle.text = url
-        errorView.visibility = View.VISIBLE
+        fadeIn(errorView)
         progressFill.visibility = View.GONE
         swipe.isRefreshing = false
         if (!hasFinishedFirstLoad) {
@@ -504,9 +548,15 @@ class MainActivity : AppCompatActivity() {
             webView.postDelayed({ if (errorView.visibility == View.VISIBLE) webView.reload() }, 3000)
         }
     }
-    private fun hideError() { errorView.visibility = View.GONE }
+    private fun hideError() {
+        if (errorView.visibility == View.VISIBLE) fadeOut(errorView)
+        else errorView.visibility = View.GONE
+    }
     private fun fadeOutSplash() {
-        splash.animate().alpha(0f).setDuration(300).withEndAction { splash.visibility = View.GONE }
+        splash.animate().alpha(0f).setDuration(450).setInterpolator(DecelerateInterpolator()).withEndAction {
+            splash.visibility = View.GONE
+            splash.alpha = 1f
+        }.start()
     }
 
     private fun updateNavMenu() {
@@ -522,7 +572,11 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) { true }
     }
     private fun refreshOfflineBanner() {
-        offlineBanner.visibility = if (isOnline()) View.GONE else View.VISIBLE
+        if (isOnline()) {
+            if (offlineBanner.visibility == View.VISIBLE) fadeOut(offlineBanner)
+        } else {
+            fadeIn(offlineBanner)
+        }
     }
 
     private fun isUrlLike(s: String): Boolean {

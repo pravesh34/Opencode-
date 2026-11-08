@@ -5,5 +5,14 @@
         <item name="android:navigationBarColor">#0B141A</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
+        <!-- Smooth activity transitions (fade + subtle slide) -->
+        <item name="android:windowAnimationStyle">@style/Animation.WindowTransitions</item>
+    </style>
+
+    <style name="Animation.WindowTransitions">
+        <item name="android:activityOpenEnterAnimation">@anim/fade_in_up</item>
+        <item name="android:activityOpenExitAnimation">@anim/fade_out_up</item>
+        <item name="android:activityCloseEnterAnimation">@anim/fade_in_up</item>
+        <item name="android:activityCloseExitAnimation">@anim/fade_out_up</item>
     </style>
 </resources>
