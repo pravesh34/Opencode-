@@ -273,6 +273,18 @@ input[type=text],input:not([type]),select{width:100%;background:var(--panel2);bo
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border2);color:var(--text);padding:12px 18px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:40;max-width:90vw;text-align:center}
 .toast.show{opacity:1}
 
+/* Kokonut ai-loading: spinner header + numbered live log */
+.ai-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.ai-spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--border2);border-top-color:var(--text);animation:spin .8s linear infinite;flex:0 0 auto}
+.ai-spin.done{border:0;animation:none;color:var(--success);font-size:14px;display:grid;place-items:center}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.ai-spin{animation:none;border-top-color:var(--border2)}}
+.steps-log{font-family:var(--mono);font-size:12px}
+.log-line{display:flex;gap:8px;align-items:baseline;padding:2px 0;color:var(--muted);line-height:1.5}
+.log-line .log-n{width:20px;text-align:right;color:var(--faint);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.log-line .log-t{white-space:pre-wrap;word-break:break-word}
+.log-line.live{color:var(--text)}
+
 /* ChatGPT-style: thinking/tool steps in assistant cards, stop/priority, keys */
 .msg .elapsed{font-size:12px;color:var(--muted);margin-bottom:2px}
 .msg .steps{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}

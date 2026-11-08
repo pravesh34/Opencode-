@@ -53,9 +53,7 @@ let userName = localStorage.getItem('og_username') || 'Pravesh Sharma';
 function showUserName() {
   const el = $('#user-name');
   if (el && userName) {
-    const h = new Date().getHours();
-    const greet = h < 12 ? 'Good Morning' : h < 18 ? 'Good Afternoon' : 'Good Evening';
-    el.textContent = `${greet}, ${userName.split(' ')[0]} ✨`;
+    el.textContent = userName;
   }
   const inp = $('#username'); if (inp && document.activeElement !== inp) inp.value = userName || '';
 }
@@ -216,6 +214,7 @@ function renderProjectList() {
     </div>`;
   }).join('') || `<div style="padding:18px;color:var(--muted);font-size:13px">No projects yet. Tap ＋ to create one.</div>`;
   list.querySelectorAll('.project-item').forEach(el => el.addEventListener('click', () => selectProject(el.dataset.id)));
+  if (activeView === 'projects') renderProjectsView();
 }
 function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -246,13 +245,15 @@ function renderMessages(p, sid) {
   const msgs = (s && s.messages)||[];
   if (!msgs.length) {
     box.innerHTML = `<div class="starter-card">
-      <h3>Start with an idea</h3>
+      <h3>Start something</h3>
       <p>Pick one to begin — it sends in this project.</p>
       <div class="starter-chips">
-        <button class="chip" type="button" data-starter="Explain this project in simple words, then suggest 3 improvements.">Explain this project</button>
-        <button class="chip" type="button" data-starter="Review this project and fix the first issue you find.">Fix first issue</button>
-        <button class="chip" type="button" data-starter="Add a new small feature: ">Add a feature</button>
+        <button class="chip" type="button" data-starter="Clone a repository into this project. Ask me for the repo URL (and target folder if needed), then clone it.">Clone a repo</button>
+        <button class="chip" type="button" data-starter="Brainstorm an idea with me. IMPORTANT: do not edit, create, or delete any files — brainstorming only (questions, suggestions, plans). Ask me what I want to build.">Brainstorm an idea</button>
+        <button class="chip" type="button" data-starter="Create a step-by-step plan for: . Do not edit any files yet — planning only.">Plan a feature</button>
+        <button class="chip" type="button" data-starter="Explore this project in read-only mode and summarize how it works. Do not edit any files.">Explore (read-only)</button>
       </div>
+      <p class="muted small" style="margin-top:8px">“Brainstorm an idea” and “Explore” won’t edit files.</p>
     </div>`;
     return;
   }
@@ -341,31 +342,97 @@ function syncSessionConfig(p, sid) {
   wsSend({type:'session_config', projectId:p.id, sessionId:s.id, model:s.model||null, opencodeSession:s.opencodeSession||null, thinking:!!s.thinking});
 }
 
-function setMainView(view) {
-  activeView = view;
-  $('#view-chat').style.display = (view==='chat') ? 'flex' : 'none';
-  $('#view-preview').style.display = (view==='preview') ? 'flex' : 'none';
-  $('#view-terminal').style.display = view==='terminal' ? 'flex' : 'none';
-  $('#view-files').style.display = view==='files' ? 'flex' : 'none';
-  $('#view-settings').style.display = view==='settings' ? 'flex' : 'none';
-  $('#view-empty').style.display = 'none';
-  $('#nav-files').classList.toggle('active', view==='files');
-  $('#nav-terminal').classList.toggle('active', view==='terminal');
-  $('#nav-settings').classList.toggle('active', view==='settings');
-  $$('#chat-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === view));
-  if (view !== 'chat') { $$('.project-item').forEach(el=>el.classList.remove('active')); $('#app').classList.add('show-main'); }
-  if (view === 'terminal') {
-    const s = $('#ws-state'); if (s) { $('#ws-state-term').textContent = s.textContent; $('#ws-state-term').className = s.className; }
-    // open the terminal inside the active project's folder (same place OpenCode runs)
+let activeChatTab = 'chat'; // 'chat' | 'preview' | 'terminal' (sub-panels inside chat screen)
+
+function setChatTab(tab) {
+  activeChatTab = tab;
+  ['chat','preview','terminal'].forEach(t => {
+    const panel = $(`#chat-panel-${t}`);
+    if (panel) panel.style.display = (t === tab) ? 'flex' : 'none';
+  });
+  $$('#chat-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  $('#nav-terminal').classList.toggle('active', false);
+  if (tab === 'terminal') {
     const p = getProject();
     const cwd = (p && p.cwd) || defaultCwd || '';
-    if (cwd) { $('#term-subtitle').textContent = cwd.replace(/^\/Users\/[^/]+/, '~'); runTermCmd(`cd "${cwd.replace(/"/g, '\\"')}"`); }
-    else $('#term-subtitle').textContent = 'Host shell · cwd tracked';
+    const sub = $('#term-subtitle');
+    if (sub) sub.textContent = cwd ? cwd.replace(/^\/Users\/[^/]+/, '~') : 'cwd tracked';
+    if (cwd) runTermCmd(`cd "${cwd.replace(/"/g, '\\"')}"`);
   }
+  if (tab === 'preview') loadPreview();
+}
+
+function renderProjectsView() {
+  const list = $('#projects-view-list'); if (!list) return;
+  const q = ($('#projects-view-search')?.value || '').toLowerCase();
+  const items = projects.filter(p => !q || (p.name||'').toLowerCase().includes(q) || (p.cwd||'').toLowerCase().includes(q));
+  const sub = $('#projects-view-subtitle'); if (sub) sub.textContent = `${projects.length} project${projects.length===1?'':'s'}`;
+  list.innerHTML = items.map(p => {
+    const s = getActiveSession(p);
+    const msgs = (s && s.messages) || [];
+    const lastMsg = msgs.slice(-1)[0];
+    const lastTs = lastMsg && lastMsg.time ? lastMsg.time : null;
+    const br = gitBranch || 'main';
+    const pathLine = p.cwd ? shortPath(p.cwd) : 'no folder';
+    const edited = lastTs ? timeAgo(lastTs) : 'No messages yet';
+    const status = gatewayOnline
+      ? '<span class="project-status"><span class="sdot on"></span>Running</span>'
+      : '<span class="project-status"><span class="sdot amber"></span>Stopped</span>';
+    const av = p.icon || (p.name||'P').trim().charAt(0).toUpperCase();
+    return `<div class="project-item" data-id="${p.id}" role="button" tabindex="0">
+      <div class="avatar" style="background:${p.color||COLORS[0]}">${escapeHtml(av)}</div>
+      <div class="project-meta">
+        <div class="name">${escapeHtml(p.name||'Project')}</div>
+        <div class="path" title="${escapeHtml(p.cwd||'')}">${escapeHtml(pathLine)}</div>
+        <div class="meta">${edited} · ${br}</div>
+      </div>
+      ${status}
+    </div>`;
+  }).join('') || `<div style="padding:18px;color:var(--muted);font-size:13px">No projects yet. Tap ＋ to create one.</div>`;
+  list.querySelectorAll('.project-item').forEach(el => el.addEventListener('click', () => selectProject(el.dataset.id)));
+}
+
+function pushNavState(state) {
+  try {
+    const s = { ...(state||{}), ts: Date.now() };
+    history.pushState(s, '', location.pathname + location.search);
+  } catch (e) {}
+}
+
+function setMainView(view, opts={}) {
+  const { skipHistory=false } = opts;
+  // Preview/terminal are rendered inside the chat screen (not full-screen).
+  if (view === 'preview' || view === 'terminal') {
+    if (!getProject() && projects.length) selectProject(projects[0].id);
+    if (!getProject()) { toast('Select a project first'); return; }
+    activeView = 'chat';
+    if (!skipHistory) pushNavState({ view: 'chat-tab', tab: view, projectId: activeProjectId });
+    showChatView({ skipHistory: true });
+    setChatTab(view);
+    return;
+  }
+  activeView = view;
+  $('#view-chat').style.display = (view==='chat') ? 'flex' : 'none';
+  const vp = $('#view-preview'); if (vp) vp.style.display = 'none';
+  const vt = $('#view-terminal'); if (vt) vt.style.display = 'none';
+  $('#view-files').style.display = view==='files' ? 'flex' : 'none';
+  $('#view-settings').style.display = view==='settings' ? 'flex' : 'none';
+  const vpr = $('#view-projects'); if (vpr) vpr.style.display = view==='projects' ? 'flex' : 'none';
+  $('#view-empty').style.display = 'none';
+  $('#nav-files').classList.toggle('active', view==='files');
+  $('#nav-terminal').classList.toggle('active', false);
+  $('#nav-settings').classList.toggle('active', view==='settings');
+  if (view === 'chat') setChatTab(activeChatTab || 'chat');
+  if (view === 'projects') renderProjectsView();
+  if (view !== 'chat') { $$('.project-item').forEach(el=>el.classList.remove('active')); $('#app').classList.add('show-main'); }
   if (view === 'settings') syncSettingsStatus();
   if (view === 'files') openFileExplorer();
-  if (view === 'preview') loadPreview();
   renderProjectList();
+  if (!skipHistory && view !== 'chat') {
+    pushNavState({ view });
+  } else if (!skipHistory && view === 'chat' && getProject()) {
+    pushNavState({ view: 'chat', projectId: activeProjectId });
+  }
 }
 function loadPreview() {
   const p = getProject(); if (!p) return;
@@ -377,10 +444,11 @@ function loadPreview() {
   if (url && frame) { if (frame.getAttribute('src') !== url) frame.src = url; wrap && wrap.classList.add('filled'); }
   else { wrap && wrap.classList.remove('filled'); }
 }
-function showChatView() {
+function showChatView(opts={}) {
+  const { skipHistory=false } = opts;
   const p = getProject();
-  if (!p) { $('#view-chat').style.display='none'; $('#view-empty').style.display='flex'; return; }
-  setMainView('chat');
+  if (!p) { $('#view-chat').style.display='none'; $('#view-empty').style.display='flex'; $('#app').classList.remove('show-main'); return; }
+  setMainView('chat', { skipHistory: true });
   $('#view-empty').style.display='none';
   const av = p.icon || (p.name||'P').trim().charAt(0).toUpperCase();
   $('#chat-avatar').textContent = av; $('#chat-avatar').style.background = p.color || COLORS[0];
@@ -394,12 +462,35 @@ function showChatView() {
   wsSend({ type:'project_switch', projectId: p.id });
   wsSend({ type:'project_config', projectId: p.id, cwd: p.cwd || defaultCwd || '' });
   syncSessionConfig(p);
+  if (!skipHistory) {
+    pushNavState({ view: 'chat', projectId: p.id });
+  }
 }
 function selectProject(id) {
-  activeProjectId = id; localStorage.setItem(ACTIVE_KEY, id);
-  showChatView();
+  try {
+    activeProjectId = id; localStorage.setItem(ACTIVE_KEY, id);
+    showChatView();
+  } catch (e) { console.error(e); toast('Open failed: ' + (e && e.message ? e.message : e)); }
 }
-function backToList() { $('#app').classList.remove('show-main'); activeView='chat'; renderProjectList(); }
+function backToList() {
+  // If we have history, prefer going back in history to avoid closing app
+  if (window.history.length > 1) {
+    try { history.back(); return; } catch {}
+  }
+  $('#app').classList.remove('show-main');
+  activeView='chat';
+  $('#view-chat').style.display='none';
+  $('#view-files').style.display='none';
+  $('#view-settings').style.display='none';
+  const vpr = $('#view-projects'); if (vpr) vpr.style.display = 'none';
+  $('#view-empty').style.display = projects.length ? 'none' : 'flex';
+  if (!projects.length) {
+    $('#view-empty').style.display='flex';
+  } else {
+    // stay in list view on sidebar/main
+  }
+  renderProjectList();
+}
 
 // ---------- Status / WS ----------
 let ws = null, wsIntentionalClose = false, wsBackoff = 1500, wsTimer = null;
@@ -444,6 +535,50 @@ function connectWs() {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && (!ws || ws.readyState !== WebSocket.OPEN)) { wsBackoff = 1500; connectWs(); } });
 
+window.addEventListener('popstate', (ev) => {
+  try {
+    const st = ev.state || {};
+    // Close modals/sheets first if open
+    const pm = $('#project-modal-back');
+    if (pm && pm.classList.contains('show')) { closeProjectModal(); return; }
+    const fs = $('#files-sheet-back');
+    if (fs && fs.classList.contains('show')) { hideFilesSheet(); return; }
+    if (st.view === 'chat' && st.projectId) {
+      if (activeProjectId !== st.projectId) {
+        activeProjectId = st.projectId;
+        try { localStorage.setItem(ACTIVE_KEY, activeProjectId); } catch {}
+      }
+      showChatView({ skipHistory: true });
+      return;
+    }
+    if (st.view === 'chat-tab' && st.projectId) {
+      if (activeProjectId !== st.projectId) {
+        activeProjectId = st.projectId;
+        try { localStorage.setItem(ACTIVE_KEY, activeProjectId); } catch {}
+      }
+      showChatView({ skipHistory: true });
+      if (st.tab === 'preview' || st.tab === 'terminal') setChatTab(st.tab);
+      return;
+    }
+    if (st.view === 'settings') {
+      setMainView('settings', { skipHistory: true });
+      return;
+    }
+    if (st.view === 'files') {
+      setMainView('files', { skipHistory: true });
+      return;
+    }
+    if (st.view === 'projects') {
+      setMainView('projects', { skipHistory: true });
+      return;
+    }
+    // Default: go to list/home
+    backToList();
+  } catch (e) {
+    backToList();
+  }
+});
+
 function handleServerMsg(j) {
   const pid = j.projectId || activeProjectId;
   const sid = j.sessionId || (getProject(pid) && getProject(pid).activeSessionId) || 'default';
@@ -455,7 +590,7 @@ function handleServerMsg(j) {
   else if (j.type==='opencode_text') { clearSlowTimer(); if(p) appendAssistantStream(p, sid, j.text); }
   else if (j.type==='opencode_think' || j.type==='opencode_tool' || j.type==='opencode_event') { if(p) appendStep(p, sid, j.text); }
   else if (j.type==='opencode_meta') { if(p) addSessionMessage(p, sid, 'system', j.text); }
-  else if (j.type==='opencode_done') { clearSlowTimer(); opencodeCurrentDone = true; if(p) finalizeAssistantStream(p, sid); renderSessionTabs(p); setBusyUI(false); if (document.hidden) notifyDone('Code-Go', (p && p.name) || 'AI finished'); }
+  else if (j.type==='opencode_done') { clearSlowTimer(); opencodeCurrentDone = true; if(p) finalizeAssistantStream(p, sid); renderSessionTabs(p); setBusyUI(false); maybeNotify('aiFinished', 'Code-Go', `${(p && p.name) || 'Project'}: AI finished`, { whenHidden: true }); maybeNotify('message', (p && p.name) || 'Code-Go', 'New AI reply', { whenHidden: true }); }
   else if (j.type==='opencode_info') updateOpenCodeInfo(j);
   else if (j.type==='opencode_models_list') fillModelList(j.models || []);
 }
@@ -492,13 +627,19 @@ function appendAssistantStream(p, sid, text) {
   const key = streamKey(p.id, sObj && sObj.id); const box = $('#project-messages');
   if (!streams[key]) {
     const el = document.createElement('div'); el.className='msg assistant';
-    el.innerHTML = '<div class="elapsed"></div><details class="steps" style="display:none"><summary>💭 Thinking…</summary><pre class="steps-log"></pre></details><div class="body"></div>';
-    streams[key] = { el, text: '', steps: [], startedAt: Date.now() };
+    el.innerHTML = '<div class="ai-head"><span class="ai-spin" aria-hidden="true"></span><span class="elapsed"></span></div><details class="steps"><summary>▶ Thought process</summary><div class="steps-log"></div></details><div class="body"></div>';
+    streams[key] = { el, text: '', steps: [], startedAt: Date.now(), lastActivity: '' };
     if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) { box.appendChild(el); box.scrollTop = box.scrollHeight; }
   }
-  { // live elapsed timer so a waiting reply never looks frozen
+  { // live elapsed timer + status so a waiting reply never looks frozen
     const st = streams[key]; const el = st.el.querySelector('.elapsed');
-    const tick = () => { if (el) el.textContent = '⏳ ' + Math.round((Date.now() - st.startedAt) / 1000) + 's · working… tap ■ to stop'; };
+    const tick = () => {
+      if (!el) return;
+      const secs = Math.round((Date.now() - st.startedAt) / 1000);
+      const activity = st.lastActivity ? ` · ${st.lastActivity}` : '';
+      if (st.slowNotice) el.textContent = `⏳ ${secs}s · working${activity} · thought process below · tap ■ to stop`;
+      else el.textContent = `⏳ ${secs}s · working${activity} · tap ■ to stop`;
+    };
     tick();
     clearInterval(st.tickId); st.tickId = setInterval(tick, 1000);
   }
@@ -523,10 +664,23 @@ function appendStep(p, sid, text) {
   let st = streams[key];
   if (!st) { appendAssistantStream(p, sid, ''); st = streams[key]; }
   if (!st) return;
-  st.steps.push(String(text));
+  const t = String(text);
+  st.steps.push(t);
   if (st.steps.length > 40) st.steps = st.steps.slice(-40);
-  const details = st.el.querySelector('.steps'); const pre = st.el.querySelector('.steps-log');
-  if (details && pre) { details.style.display = ''; pre.textContent = st.steps.join('\n'); }
+  st.lastActivity = t.replace(/\s+/g, ' ').trim().slice(0, 80);
+  const details = st.el.querySelector('.steps');
+  const log = st.el.querySelector('.steps-log');
+  const summary = st.el.querySelector('.steps summary');
+  if (details && log) {
+    // Kokonut-ai-loading style: numbered mono rows, latest highlighted
+    const last5 = st.steps.slice(-5);
+    log.innerHTML = last5.map((ln, i) => {
+      const n = st.steps.length - last5.length + i + 1;
+      return `<div class="log-line${i === last5.length - 1 ? ' live' : ''}"><span class="log-n">${n}</span><span class="log-t">${escapeHtml(ln)}</span></div>`;
+    }).join('');
+    details.open = true;
+  }
+  if (summary) summary.textContent = `▶ Thought process · ${st.steps.length} update${st.steps.length === 1 ? '' : 's'}`;
   const box = $('#project-messages');
   if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) box.scrollTop = box.scrollHeight;
 }
@@ -534,7 +688,15 @@ function finalizeAssistantStream(p, sid) {
   if (!p) return;
   const sObj = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p);
   const key = streamKey(p.id, sObj && sObj.id); const st = streams[key];
-  if (st) { clearInterval(st.tickId); const el = st.el.querySelector('.elapsed'); if (el) el.textContent = ''; }
+  // done → icon turns into ✓, collapses the log (Kokonut behavior)
+  if (st) {
+    clearInterval(st.tickId);
+    const el = st.el.querySelector('.elapsed'); if (el) el.textContent = '';
+    const spin = st.el.querySelector('.ai-spin'); if (spin) { spin.classList.add('done'); spin.innerHTML = '✓'; }
+    const details = st.el.querySelector('.steps'); if (details) details.open = false;
+    const summary = st.el.querySelector('.steps summary');
+    if (summary) summary.textContent = `Thought process · ${st.steps.length} steps`;
+  }
   if (st && st.text && sObj) {
     sObj.messages = sObj.messages || []; sObj.messages.push({ role:'assistant', text: st.text, time: Date.now() });
     if (sObj.messages.length > 300) sObj.messages = sObj.messages.slice(-300);
@@ -599,7 +761,21 @@ function sendPrompt(text, priority) {
   addSessionMessage(p, s.id, 'user', text);
   opencodeCurrentDone = false;
   clearSlowTimer();
-  opencodeSlowTimer = setTimeout(() => { if(!opencodeCurrentDone && activeProjectId===p.id) addSessionMessage(p,s.id,'system','Still running — first reply can take 20–60s'); }, 20000);
+  opencodeSlowTimer = setTimeout(() => {
+    if (opencodeCurrentDone || activeProjectId !== p.id) return;
+    const key = streamKey(p.id, s.id);
+    let st = streams[key];
+    if (!st) { appendAssistantStream(p, s.id, ''); st = streams[key]; }
+    if (!st) return;
+    st.slowNotice = true;
+    if (!st.lastActivity) st.lastActivity = 'starting';
+    const details = st.el.querySelector('.steps');
+    const summary = st.el.querySelector('.steps summary');
+    const pre = st.el.querySelector('.steps-log');
+    if (details) details.style.display = '';
+    if (summary) summary.textContent = st.steps.length ? `▶ Thought process · ${st.steps.length} updates` : '▶ Thought process (what’s happening)';
+    if (pre && !st.steps.length) pre.textContent = 'Starting… waiting for model activity. (Updates will appear here.)';
+  }, 20000);
   if (ws && ws.readyState === WebSocket.OPEN) {
     wsSend({type:'opencode_prompt', projectId:p.id, sessionId:s.id, text, priority: !!priority});
   } else { clearSlowTimer(); addSessionMessage(p,s.id,'assistant','(offline) Start the gateway server to use OpenCode.'); }
@@ -699,33 +875,59 @@ $('#export-btn')?.addEventListener('click', async () => {
 });
 
 // ---------- Notifications ----------
+const NOTIF_KEY = 'og_notif_prefs';
+function loadNotifPrefs() {
+  let p = { aiFinished: true, message: false, newProject: false };
+  try { p = { ...p, ...(JSON.parse(localStorage.getItem(NOTIF_KEY) || '{}') || {}) }; } catch {}
+  return p;
+}
+function saveNotifPrefs(p) { try { localStorage.setItem(NOTIF_KEY, JSON.stringify(p)); } catch {} }
 function updateNotifState() {
   const st = $('#notif-state'); if (!st) return;
   st.textContent = !('Notification' in window) ? 'not supported' : Notification.permission;
+  const p = loadNotifPrefs();
+  const af = $('#notif-ai-finished'); if (af) af.checked = !!p.aiFinished;
+  const nm = $('#notif-message'); if (nm) nm.checked = !!p.message;
+  const np = $('#notif-new-project'); if (np) np.checked = !!p.newProject;
+}
+function maybeNotify(type, title, body, opts = {}) {
+  const prefs = loadNotifPrefs();
+  if (!prefs[type]) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (opts.whenHidden && !document.hidden) return;
+  try { new Notification(title || 'Code-Go', { body: body || '', icon: '/icons/icon-192.png' }); } catch {}
 }
 $('#notif-btn')?.addEventListener('click', async () => {
   if (!('Notification' in window)) { toast('Notifications not supported'); return; }
   const p = await Notification.requestPermission();
   updateNotifState();
-  toast(p === 'granted' ? '🔔 Notifications on' : 'Notifications not allowed');
+  toast(p === 'granted' ? '🔔 Notifications enabled' : 'Notifications not allowed');
+});
+['notif-ai-finished','notif-message','notif-new-project'].forEach(id => {
+  const el = document.getElementById(id); if (!el) return;
+  el.addEventListener('change', () => {
+    const p = loadNotifPrefs();
+    p.aiFinished = !!$('#notif-ai-finished')?.checked;
+    p.message = !!$('#notif-message')?.checked;
+    p.newProject = !!$('#notif-new-project')?.checked;
+    saveNotifPrefs(p);
+    toast('Notification settings saved');
+  });
 });
 updateNotifState();
-function notifyDone(title, body) {
-  if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return;
-  try { new Notification(title || 'Code-Go', { body: body || 'AI finished', icon: '/icons/icon-192.png' }); } catch {}
-}
 // quick-action chips + starter prompts
 document.addEventListener('click', (e) => {
   const chip = e.target.closest('[data-chip]'); const starter = e.target.closest('[data-starter]');
   if (chip) { sendPrompt(chip.dataset.chip + '…'); }
   if (starter) { sendPrompt(starter.dataset.starter); }
 });
-// chat tabs
+// chat tabs (Preview/Terminal render inside the chat screen, not full-screen)
 $$('#chat-tabs .tab').forEach(t => t.addEventListener('click', () => {
-  if (t.dataset.tab === 'terminal') setMainView('terminal');
-  else setMainView(t.dataset.tab); // 'chat' | 'preview'
+  const tab = t.dataset.tab; // 'chat' | 'preview' | 'terminal'
+  if (tab === 'chat') { if ($('#view-chat').style.display !== 'flex') showChatView(); setChatTab('chat'); }
+  else setMainView(tab); // ensures project context, shows chat screen + sub-tab
 }));
-$('#back-preview')?.addEventListener('click', backToList);
+$('#back-preview')?.addEventListener('click', () => { if ($('#view-chat').style.display === 'flex') setChatTab('chat'); else backToList(); });
 $('#preview-reload')?.addEventListener('click', () => { const f = $('#preview-frame'); if (f && f.src) f.src = f.src; });
 $('#preview-go')?.addEventListener('click', () => {
   const p = getProject(); const url = ($('#preview-url').value || '').trim();
@@ -746,10 +948,39 @@ const TERM_HIST_KEY = 'og_term_history';
 let termHistory = []; try { termHistory = JSON.parse(localStorage.getItem(TERM_HIST_KEY) || '[]'); } catch { termHistory = []; }
 let termHistIdx = -1;
 let lastTermCmd = '', lastTermError = '';
+let lastAutoPreviewUrl = '';
+function maybeAutoPreviewFromTerminal(text) {
+  const s = String(text || '');
+  // Detect localhost dev-server URLs from terminal output (Vite/Next/Flask/etc.)
+  const re = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)(?:\/[^\s"'<>)]*)?/ig;
+  const matches = s.match(re);
+  if (!matches || !matches.length) return;
+  let url = matches[matches.length - 1]; // prefer the latest/most specific in this chunk
+  url = url.replace(/^(https?:\/\/)0\.0\.0\.0/i, '$1localhost').replace(/^(https?:\/\/)\[::1\]/i, '$1localhost');
+  try {
+    const u = new URL(url);
+    // Avoid previewing the Code-Go app itself
+    if (u.host === location.host) return;
+  } catch { return; }
+  if (url === lastAutoPreviewUrl) return;
+  const p = getProject(); if (!p) return;
+  lastAutoPreviewUrl = url;
+  p.previewUrl = url; saveProjects();
+  const input = $('#preview-url'); if (input) input.value = url;
+  loadPreview();
+  if (activeView === 'chat' && activeChatTab !== 'preview') {
+    setChatTab('preview');
+    toast('Preview: ' + url);
+  } else {
+    toast('Preview updated: ' + url);
+  }
+}
 function addTerm(text) {
   const t=$('#term-out'); if(!t) return;
-  t.textContent += (t.textContent && !t.textContent.endsWith('\n') ? '\n':'') + String(text) + '\n';
+  const s = String(text);
+  t.textContent += (t.textContent && !t.textContent.endsWith('\n') ? '\n':'') + s + '\n';
   t.parentElement.scrollTop = 1e9;
+  maybeAutoPreviewFromTerminal(s);
 }
 function runTermCmd(cmd) {
   const p = getProject();
@@ -879,6 +1110,7 @@ $('#proj-save').addEventListener('click', () => {
     projects.unshift(p); activeProjectId = p.id; saveProjects();
     renderProjectList(); showChatView();
     toast('Project created');
+    maybeNotify('newProject', 'Code-Go', `New project: ${name}`, { whenHidden: true });
   }
   closeProjectModal();
 });
@@ -1024,8 +1256,11 @@ $('#card-ai-agent')?.addEventListener('click', () => {
   document.querySelector('#opencode-input')?.focus();
 });
 $('#card-remote')?.addEventListener('click', () => setMainView('terminal'));
-$('#card-projects')?.addEventListener('click', () => { $('#project-search')?.focus(); });
+$('#card-projects')?.addEventListener('click', () => setMainView('projects'));
 $('#empty-new-project').addEventListener('click', ()=>openProjectModal(null));
+$('#back-projects')?.addEventListener('click', backToList);
+$('#projects-view-new')?.addEventListener('click', ()=>openProjectModal(null));
+$('#projects-view-search')?.addEventListener('input', ()=>{ if (activeView==='projects') renderProjectsView(); });
 $('#project-settings-btn').addEventListener('click', ()=>openProjectModal(activeProjectId));
 $('#project-search').addEventListener('input', renderProjectList);
 $('#back-btn').addEventListener('click', backToList);
@@ -1058,13 +1293,20 @@ health().then(()=>{ // fill default cwd once known
 });
 setInterval(health, 5000);
 
+try {
+  if (history.state == null) {
+    history.replaceState({ view: 'home' }, '', location.pathname + location.search);
+  }
+} catch (e) {}
+
 // default view
 if (projects.length && activeProjectId) {
   // on mobile show list first; on desktop show chat
-  if (window.innerWidth > 720) showChatView();
-  else { $('#view-empty').style.display='flex'; $('#view-chat').style.display='none'; }
+  if (window.innerWidth > 720) showChatView({ skipHistory: true });
+  else { $('#view-empty').style.display='flex'; $('#view-chat').style.display='none'; $('#app').classList.remove('show-main'); }
 } else {
   $('#view-empty').style.display='flex';
+  $('#app').classList.remove('show-main');
 }
 // deep link #terminal/#settings/#opencode/#files
 (function(){

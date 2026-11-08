@@ -627,7 +627,7 @@ function appendAssistantStream(p, sid, text) {
   const key = streamKey(p.id, sObj && sObj.id); const box = $('#project-messages');
   if (!streams[key]) {
     const el = document.createElement('div'); el.className='msg assistant';
-    el.innerHTML = '<div class="elapsed"></div><details class="steps" style="display:none"><summary>▶ Thought process</summary><pre class="steps-log"></pre></details><div class="body"></div>';
+    el.innerHTML = '<div class="ai-head"><span class="ai-spin" aria-hidden="true"></span><span class="elapsed"></span></div><details class="steps"><summary>▶ Thought process</summary><div class="steps-log"></div></details><div class="body"></div>';
     streams[key] = { el, text: '', steps: [], startedAt: Date.now(), lastActivity: '' };
     if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) { box.appendChild(el); box.scrollTop = box.scrollHeight; }
   }
@@ -669,9 +669,17 @@ function appendStep(p, sid, text) {
   if (st.steps.length > 40) st.steps = st.steps.slice(-40);
   st.lastActivity = t.replace(/\s+/g, ' ').trim().slice(0, 80);
   const details = st.el.querySelector('.steps');
-  const pre = st.el.querySelector('.steps-log');
+  const log = st.el.querySelector('.steps-log');
   const summary = st.el.querySelector('.steps summary');
-  if (details && pre) { details.style.display = ''; pre.textContent = st.steps.join('\n'); }
+  if (details && log) {
+    // Kokonut-ai-loading style: numbered mono rows, latest highlighted
+    const last5 = st.steps.slice(-5);
+    log.innerHTML = last5.map((ln, i) => {
+      const n = st.steps.length - last5.length + i + 1;
+      return `<div class="log-line${i === last5.length - 1 ? ' live' : ''}"><span class="log-n">${n}</span><span class="log-t">${escapeHtml(ln)}</span></div>`;
+    }).join('');
+    details.open = true;
+  }
   if (summary) summary.textContent = `▶ Thought process · ${st.steps.length} update${st.steps.length === 1 ? '' : 's'}`;
   const box = $('#project-messages');
   if (activeProjectId===p.id && p.activeSessionId=== (sObj&&sObj.id) && box) box.scrollTop = box.scrollHeight;
@@ -680,7 +688,15 @@ function finalizeAssistantStream(p, sid) {
   if (!p) return;
   const sObj = (p.sessions||[]).find(x=>x.id===sid) || getActiveSession(p);
   const key = streamKey(p.id, sObj && sObj.id); const st = streams[key];
-  if (st) { clearInterval(st.tickId); const el = st.el.querySelector('.elapsed'); if (el) el.textContent = ''; }
+  // done → icon turns into ✓, collapses the log (Kokonut behavior)
+  if (st) {
+    clearInterval(st.tickId);
+    const el = st.el.querySelector('.elapsed'); if (el) el.textContent = '';
+    const spin = st.el.querySelector('.ai-spin'); if (spin) { spin.classList.add('done'); spin.innerHTML = '✓'; }
+    const details = st.el.querySelector('.steps'); if (details) details.open = false;
+    const summary = st.el.querySelector('.steps summary');
+    if (summary) summary.textContent = `Thought process · ${st.steps.length} steps`;
+  }
   if (st && st.text && sObj) {
     sObj.messages = sObj.messages || []; sObj.messages.push({ role:'assistant', text: st.text, time: Date.now() });
     if (sObj.messages.length > 300) sObj.messages = sObj.messages.slice(-300);
