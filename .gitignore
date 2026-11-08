@@ -9,6 +9,7 @@
 .cxx
 app/build/
 *.apk
+*.aab
 web/node_modules/
 web/package-lock.json
 # standalone binaries fetched in CI - never commit
