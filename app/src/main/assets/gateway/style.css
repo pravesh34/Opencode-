@@ -105,10 +105,11 @@ a{color:var(--accent)}
 .chip:active{background:var(--panel2)}
 
 /* Composer */
-.composer{display:flex;gap:10px;padding:12px 20px calc(20px + env(safe-area-inset-bottom,0px));align-items:center}
-.composer input{flex:1;height:52px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:16px;padding:0 16px;font-size:15px;outline:none}
-.composer input:focus{border-color:var(--accent)}
-.composer input:disabled{opacity:.5}
+.composer{display:flex;gap:8px;padding:12px 20px calc(20px + env(safe-area-inset-bottom,0px));align-items:flex-end}
+.composer textarea{flex:1;min-height:52px;max-height:140px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:16px;padding:14px 16px;font-size:16px;outline:none;resize:none;font:inherit;line-height:1.4}
+.composer textarea:focus{border-color:var(--accent)}
+.composer textarea:disabled{opacity:.5}
+.composer .btn.secondary{width:52px;height:52px;min-height:52px;padding:0;display:grid;place-items:center;font-size:20px;flex:0 0 auto}
 .btn{background:var(--accent);color:var(--accent-text);border:0;border-radius:16px;min-height:52px;padding:14px 20px;font-weight:700;font-size:15px;cursor:pointer}
 .btn.secondary{background:transparent;color:var(--text);border:1px solid var(--border2)}
 .btn.danger{background:transparent;color:var(--danger);border:1px solid #5c2a30}

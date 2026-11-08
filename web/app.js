@@ -240,8 +240,9 @@ function setWsPill(text, cls) {
   const banner = $('#conn-banner');
   if (banner) banner.classList.toggle('hidden', connected);
   const input = $('#opencode-input'), send = $('#send-btn');
-  if (input) { input.disabled = !connected; if (!connected) input.placeholder = 'Disconnected — tap Reconnect'; else input.placeholder = 'Describe what you want…'; }
+  if (input) { input.disabled = !connected; if (!connected) input.placeholder = 'Disconnected — tap Reconnect'; else input.placeholder = 'Describe what to build'; }
   if (send) send.disabled = !connected;
+  ['#mic-btn','#attach-btn','#prio-btn'].forEach(sel => { const b = $(sel); if (b) b.disabled = !connected; });
 }
 function wsSend(obj){ if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
 function scheduleWsReconnect() {
@@ -284,7 +285,7 @@ function handleServerMsg(j) {
   else if (j.type==='opencode_text') { clearSlowTimer(); if(p) appendAssistantStream(p, sid, j.text); }
   else if (j.type==='opencode_think' || j.type==='opencode_tool' || j.type==='opencode_event') { if(p) appendStep(p, sid, j.text); }
   else if (j.type==='opencode_meta') { if(p) addSessionMessage(p, sid, 'system', j.text); }
-  else if (j.type==='opencode_done') { clearSlowTimer(); opencodeCurrentDone = true; if(p) finalizeAssistantStream(p, sid); renderSessionTabs(p); setBusyUI(false); }
+  else if (j.type==='opencode_done') { clearSlowTimer(); opencodeCurrentDone = true; if(p) finalizeAssistantStream(p, sid); renderSessionTabs(p); setBusyUI(false); if (document.hidden) notifyDone('Code-Go', (p && p.name) || 'AI finished'); }
   else if (j.type==='opencode_info') updateOpenCodeInfo(j);
   else if (j.type==='opencode_models_list') fillModelList(j.models || []);
 }
@@ -416,8 +417,106 @@ $('#opencode-form').addEventListener('submit', e => {
   e.preventDefault();
   const text = $('#opencode-input').value; if(!text.trim()) return;
   const prio = priorityNext;
-  if (sendPrompt(text, prio)) { $('#opencode-input').value = ''; priorityNext = false; $('#prio-btn')?.classList.remove('on'); }
+  if (sendPrompt(text, prio)) { $('#opencode-input').value = ''; autoGrowComposer(); priorityNext = false; $('#prio-btn')?.classList.remove('on'); }
 });
+// multiline composer: auto-grow, Enter sends, Shift+Enter newline
+function autoGrowComposer() {
+  const t = $('#opencode-input'); if (!t) return;
+  t.style.height = 'auto';
+  t.style.height = Math.min(t.scrollHeight, 140) + 'px';
+}
+$('#opencode-input')?.addEventListener('input', autoGrowComposer);
+$('#opencode-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#opencode-form').requestSubmit(); }
+});
+
+// ---------- Voice input ----------
+(function initVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = $('#mic-btn');
+  if (!SR || !btn) { btn && (btn.style.display = 'none'); return; }
+  let rec = null;
+  btn.addEventListener('click', () => {
+    if (rec) { try { rec.stop(); } catch {} rec = null; btn.textContent = '🎙'; return; }
+    try {
+      rec = new SR();
+      rec.lang = navigator.language || 'en-US';
+      rec.interimResults = false;
+      btn.textContent = '■';
+      rec.onresult = (ev) => {
+        const t = ev.results[0][0].transcript;
+        const input = $('#opencode-input');
+        if (input) { input.value = (input.value + ' ' + t).trim(); autoGrowComposer(); }
+      };
+      rec.onend = () => { rec = null; btn.textContent = '🎙'; };
+      rec.onerror = () => { rec = null; btn.textContent = '🎙'; toast('Voice not available'); };
+      rec.start();
+    } catch { toast('Voice not available'); }
+  });
+})();
+
+// ---------- File attach ----------
+$('#attach-btn')?.addEventListener('click', () => $('#attach-file')?.click());
+$('#attach-file')?.addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  if (f.size > 5 * 1024 * 1024) { toast('File too big (max 5 MB)'); return; }
+  const p = getProject(); if (!p) { toast('Create a project first'); return; }
+  toast('Uploading ' + f.name + '…');
+  try {
+    const buf = await f.arrayBuffer();
+    const bytes = new Uint8Array(buf); let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    const r = await fetch('/api/fs/upload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: f.name, data: btoa(bin), cwd: p.cwd || defaultCwd || '' })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'upload failed');
+    const input = $('#opencode-input');
+    const note = `Please look at ${j.path} (attached ${f.name}) and continue. `;
+    if (input) { input.value = note + input.value; autoGrowComposer(); input.focus(); }
+    toast('Attached → ' + j.path);
+  } catch (err) { toast('Upload failed: ' + (err.message || err)); }
+});
+
+// ---------- Export / share ----------
+$('#export-btn')?.addEventListener('click', async () => {
+  const p = getProject(); const s = getActiveSession(p);
+  if (!p || !s) return;
+  const msgs = (s.messages || []).map(m => `## ${m.role === 'user' ? 'You' : 'Code-Go'}\n\n${m.text}\n`).join('\n');
+  const md = `# ${p.name} — ${s.name}\n\nExported ${new Date().toISOString()}\n\n${msgs}`;
+  const fname = (p.name || 'code-go').replace(/[^a-z0-9-_]+/gi, '-') + '-chat.md';
+  try {
+    const file = new File([md], fname, { type: 'text/markdown' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ title: p.name, text: 'Code-Go chat export', files: [file] });
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }));
+    a.download = fname; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Exported ' + fname);
+  } catch (err) { /* user cancelled share */ }
+});
+
+// ---------- Notifications ----------
+function updateNotifState() {
+  const st = $('#notif-state'); if (!st) return;
+  st.textContent = !('Notification' in window) ? 'not supported' : Notification.permission;
+}
+$('#notif-btn')?.addEventListener('click', async () => {
+  if (!('Notification' in window)) { toast('Notifications not supported'); return; }
+  const p = await Notification.requestPermission();
+  updateNotifState();
+  toast(p === 'granted' ? '🔔 Notifications on' : 'Notifications not allowed');
+});
+updateNotifState();
+function notifyDone(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return;
+  try { new Notification(title || 'Code-Go', { body: body || 'AI finished', icon: '/icons/icon-192.png' }); } catch {}
+}
 // quick-action chips + starter prompts
 document.addEventListener('click', (e) => {
   const chip = e.target.closest('[data-chip]'); const starter = e.target.closest('[data-starter]');

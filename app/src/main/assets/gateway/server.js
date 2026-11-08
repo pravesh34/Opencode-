@@ -85,8 +85,34 @@ const mime = {
   '.ico': 'image/x-icon',
 };
 
+// POST /api/fs/upload — store a chat attachment into <cwd>/uploads/ so OpenCode can read it
+function handleUpload(req, res) {
+  let body = '';
+  req.on('data', (chunk) => {
+    body += chunk;
+    if (body.length > 7 * 1024 * 1024) { try { req.destroy(); } catch {} }
+  });
+  req.on('end', () => {
+    try {
+      const data = JSON.parse(body || '{}');
+      const filename = String(data.filename || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'upload';
+      if (!data.data) throw new Error('data required (base64)');
+      const cwd = data.cwd ? path.resolve(data.cwd) : PROJECT_ROOT;
+      if (!cwd.startsWith(PROJECT_ROOT) && !cwd.startsWith(os.homedir())) throw new Error('outside allowed folders');
+      const dir = path.join(cwd, 'uploads');
+      fs.mkdirSync(dir, { recursive: true });
+      const out = path.join(dir, Date.now() + '-' + filename);
+      fs.writeFileSync(out, Buffer.from(data.data, 'base64'));
+      json(res, 200, { ok: true, path: 'uploads/' + path.basename(out), fullPath: out });
+    } catch (e) {
+      json(res, 400, { error: String((e && e.message) || e) });
+    }
+  });
+}
+
 function serve(req, res) {
   let urlPath = req.url.split('?')[0];
+  if (req.method === 'POST' && urlPath === '/api/fs/upload') return handleUpload(req, res);
   if (urlPath === '/') urlPath = '/index.html';
   const file = path.join(root, decodeURIComponent(urlPath));
   if (!file.startsWith(root)) { res.writeHead(403); return res.end(); }

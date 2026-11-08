@@ -46,6 +46,7 @@
           <div class="subtitle" id="chat-subtitle">cwd · model</div>
         </div>
         <span id="ws-state" class="pill">…</span>
+        <button class="icon-btn" id="export-btn" title="Export / share chat" aria-label="Export">⇪</button>
         <button class="icon-btn" id="project-settings-btn" title="Project settings">⚙</button>
       </div>
       <div class="session-bar" id="session-bar">
@@ -71,7 +72,10 @@
         <button class="chip" type="button" data-chip="Commit the current change with a good message. ">Commit</button>
       </div>
       <form class="composer" id="opencode-form">
-        <input id="opencode-input" placeholder="Describe what to build" autocomplete="off"/>
+        <input type="file" id="attach-file" accept="image/*,.txt,.md,.pdf" hidden/>
+        <button class="btn secondary" type="button" id="attach-btn" aria-label="Attach file" title="Attach image / file">📎</button>
+        <textarea id="opencode-input" placeholder="Describe what to build" rows="1" maxlength="8000"></textarea>
+        <button class="btn secondary" type="button" id="mic-btn" aria-label="Voice input" title="Voice input">🎙</button>
         <button class="btn secondary" type="button" id="prio-btn" aria-label="Priority" title="Force next message to the front (pre-empts current run)">⚡</button>
         <button class="btn danger hidden" type="button" id="stop-btn" aria-label="Stop">■</button>
         <button class="btn" type="submit" id="send-btn" aria-label="Send">↑</button>
@@ -196,6 +200,10 @@
             <div><div class="small muted">OpenCode</div><div id="opencode-state">—</div> <span class="small muted" id="opencode-sub"></span></div>
           </div>
           <p class="small muted" style="margin-top:10px">Server time: <span id="uptime">—</span></p>
+          <div class="row">
+            <button class="btn secondary" id="notif-btn" type="button">Enable “AI finished” notifications</button>
+            <span id="notif-state" class="small muted">—</span>
+          </div>
         </div>
       </div>
     </div>
