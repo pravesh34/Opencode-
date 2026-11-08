@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Open Gateway</string>
+    <string name="app_name">Code-Go</string>
     <string name="settings_title">Gateway URL</string>
     <string name="enter_url">Enter a gateway URL</string>
     <string name="save_reload">Save &amp; reload</string>

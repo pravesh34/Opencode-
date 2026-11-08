@@ -1,73 +1,47 @@
-# Open Gateway (Kotlin Android)
+# Code-Go
 
-A Kotlin Android app (WebView) that loads the Open Gateway web UI (Next.js PWA) so you can install it as an APK.
+Projects + terminal + AI coding (**OpenCode**) in your browser. Works on **Mac** and on an **Android phone** — no build, no APK required.
 
-## Local web app (for testing)
+## Run (one line each side)
 
-The repo now ships a local web app in `web/` that the wrapper loads:
-
+**Mac:**
 ```bash
-cd web
-npm install
-npm start
-# http://localhost:3000  ·  WS ws://localhost:8080/ws (also localhost:3000/ws)
+./start-mac.sh            # or: cd web && npm install && npm start
+# open http://localhost:3000
 ```
 
-It includes Home, Chat, Terminal and Settings tabs and is the default target for emulator runs (`http://10.0.2.2:3000` = host `localhost`). See `web/README.md`.
-
-## Configure URL
-
-Edit `gradle.properties` (build-time default):
-
-```properties
-GATEWAY_URL=http://10.0.2.2:3000
-```
-
-Or change it at runtime in the app: **Menu → Settings → Gateway URL** (persisted in `SharedPreferences`, survives rebuilds). For local dev you can use `http://<device-ip>:3000` (cleartext enabled).
-
-## Build APK (needs Android SDK + JDK 17)
-
-On a machine with Android Studio/SDK:
-
+**Android phone (Termux, fully on-device):**
 ```bash
-# from this folder
-gradle wrapper   # if you want ./gradlew
-./gradlew assembleDebug
-# APK: app/build/outputs/apk/debug/app-debug.apk
+curl -fsSL https://raw.githubusercontent.com/pravesh34/Opencode-/main/setup-termux.sh | bash
+# then open http://127.0.0.1:3000 in the phone browser (or install the PWA)
 ```
 
-Release builds use R8 + resource shrinking (`isMinifyEnabled = true`, `app/proguard-rules.pro`).
+**Phone + Mac on one WiFi:** run `./start-mac.sh` on the Mac and open `http://<mac-ip>:3000` in the phone browser.
 
-## Build APK via GitHub Actions
+> This repo's web server is plain Node (`web/server.js`) + `ws`. No build step.
 
-1. Push to GitHub.
-2. Open the **Actions** tab → run **Android APK** (or push a commit). You can pass a `gateway_url` override via **Run workflow** inputs.
-3. Download the `app-debug-apk` artifact.
+## PWA (saves as an app icon)
 
-## What's improved (v1.1.0)
+`web/manifest.webmanifest` + `web/sw.js` make Code-Go installable: browser menu → **“Add to Home Screen”** (Android) / Share → **“Add to Home Screen”** (iOS). Display is `standalone` with theme `#19C37D`.
 
-- **Toolbar & menu** (Reload, Home, Back, Forward, Share, Copy link, Open in browser, Settings)
-- **URL settings** — in-app editor, persisted, with clear-cache action
-- **Error & offline UX** — dedicated error view with Retry/Settings, offline banner + auto-retry, `onReceivedHttpError` and SSL-error dialog (proceed/cancel/view cert)
-- **WebView features** — file upload (content + camera), `DownloadManager` downloads, long-press link menu (open/share/copy), safe browsing, zoom enabled, FileProvider
-- **Pull-to-refresh + loading bar** — themed spinner, thin accent progress bar, `onPause/onResume` lifecycle, state save/restore, deep-link & Send-intent handling
-- **Build** — version 1.1.0 (code 2), release minify, `lifecycle-runtime-ktx`, CI caching & gateway override
+## What you get
 
-## Tunneling (for the web gateway)
+- **Projects** (Telegram-style list): per-project folder, git branch, last prompt, Running/Stopped status
+- **Chat** with OpenCode: multi-session tabs, per-session model, Accept/Undo, quick-action chips
+- **Preview**: live dev-server WebView inside the app
+- **Terminal**: real host shell (Mac zsh / Termux bash), key row, history, “Send error to chat”
+- **Files**: browse + preview project files
 
-The web gateway must be reachable by the phone. If using the Next.js app on another device:
+## Optional: Android APK wrapper
 
+A Kotlin WebView wrapper (renamed **Code-Go**) is under `app/` — purely optional for an app icon + in-app native terminal. Build with JDK 17 + Android SDK 35 + Gradle:
 ```bash
-# terminal running open-gateway web + gateway
-npx cloudflared tunnel --url http://localhost:3000
+./gradlew assembleDebug   # (or: gradle assembleDebug)
 ```
+First launch defaults to `http://127.0.0.1:3000` and auto-starts the gateway service — no manual URL setup.
 
-Use the printed `https://....trycloudflare.com` as `GATEWAY_URL`. **Note:** the chat/terminal WebSocket (`:8080`) also needs to be reachable; for full functionality, proxy WS through the same origin/tunnel (the included `web/` server does this) or tunnel `:8080` separately and configure the web app's `NEXT_PUBLIC_GATEWAY_WS` accordingly.
+## Branches
 
-## Termux prerequisites (if building/pushing from Termux)
-
-```bash
-pkg update
-pkg install git openjdk-17
-# Android SDK/Gradle setup is required separately to build APK locally.
-```
+- `main` — standalone Compose app (embedded opencode/busybox)
+- `standalone-v14` — previous WebView + GatewayService version
+- `code-go` — this branch (WebApp-first)

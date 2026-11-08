@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execFile, execFileSync } = require('child_process');
 const WebSocket = require('ws');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const WS_PORT = process.env.WS_PORT || 8080;
@@ -11,6 +12,38 @@ const WS_PORT = process.env.WS_PORT || 8080;
 const root = __dirname;
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 console.log(`Project: ${PROJECT_ROOT}`);
+
+// ---------- Auth (simple, local-first) ----------
+const AUTH_USER = process.env.OG_USER || 'admin';
+const AUTH_PASS = process.env.OG_PASS || 'opengateway';
+const sessions = new Map(); // token -> { user, created }
+
+function parseCookies(req) {
+  const h = req.headers.cookie || '';
+  const out = {};
+  h.split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) out[p.slice(0,i).trim()] = decodeURIComponent(p.slice(i+1).trim()); });
+  return out;
+}
+function getToken(req) {
+  const cookies = parseCookies(req);
+  if (cookies.og_session && sessions.has(cookies.og_session)) return cookies.og_session;
+  const auth = req.headers.authorization || '';
+  if (auth.startsWith('Bearer ')) { const t = auth.slice(7); if (sessions.has(t)) return t; }
+  return null;
+}
+function isAuthed(req) { return !!getToken(req); }
+function readBody(req) {
+  return new Promise((resolve) => {
+    let data = '';
+    req.on('data', c => { data += c; if (data.length > 1e6) req.destroy(); });
+    req.on('end', () => resolve(data));
+    req.on('error', () => resolve(''));
+  });
+}
+function json(res, status, obj, headers={}) {
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', ...headers });
+  res.end(JSON.stringify(obj));
+}
 
 // Cross-platform shell: Mac ($SHELL=/bin/zsh) + Termux (bash in $PREFIX) + Linux
 function detectShell() {
@@ -118,7 +151,7 @@ function serve(req, res) {
 }
 
 const server = http.createServer(serve);
-server.listen(PORT, () => console.log(`Open Gateway web: http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Code-Go web: http://localhost:${PORT}`));
 
 // WS on :8080 (chat/terminal) — also upgrade on 3000 for single-origin tunnelling
 const wss = new WebSocket.Server({ port: WS_PORT });

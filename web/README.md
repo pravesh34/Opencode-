@@ -1,4 +1,4 @@
-# Open Gateway web (local demo)
+# Code-Go web (local demo)
 
 The web UI that the Android WebView app loads. Run it locally on `:3000` for development, or point the app at a tunnel / production Next.js PWA via the in-app Settings.
 
