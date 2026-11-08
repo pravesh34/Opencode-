@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Open Gateway — one-line installer for Termux (run on the Android phone)
-# curl -fsSL https://raw.githubusercontent.com/pravesh34/Opencode-/main/setup-termux.sh | bash
+# Code-Go — one-line installer for Termux (run on the Android phone)
+# curl -fsSL https://raw.githubusercontent.com/pravesh34/Opencode-/code-go/setup-termux.sh | bash
 set -e
 REPO="https://github.com/pravesh34/Opencode-"
 DIR="$HOME/Opencode-"
@@ -18,11 +18,20 @@ if ! command -v curl >/dev/null 2>&1; then pkg install -y curl; fi
 echo "==> node $(node --version)"
 
 if [ -d "$DIR/.git" ]; then
-  echo "==> Repo found, updating..."
-  git -C "$DIR" pull --ff-only || echo "    (pull skipped, continuing)"
+  echo "==> Repo found, updating to code-go branch..."
+  git -C "$DIR" fetch origin || true
+  git -C "$DIR" checkout code-go || git -C "$DIR" checkout -b code-go origin/code-go
+  git -C "$DIR" pull --ff-only origin code-go || echo "    (pull skipped, continuing with local code-go)"
 else
-  echo "==> Cloning repo..."
-  git clone "$REPO" "$DIR"
+  echo "==> Cloning repo (code-go branch)..."
+  git clone --branch code-go "$REPO" "$DIR"
+fi
+
+# main is the Compose app (no web/); the web gateway lives on code-go.
+if [ ! -f "$DIR/web/server.js" ]; then
+  echo "ERROR: web/server.js missing after checkout — run:"
+  echo "  git -C \"\$DIR\" checkout code-go"
+  exit 1
 fi
 
 cd "$DIR/web"
@@ -54,8 +63,7 @@ echo "✅ Gateway running!"
 echo "   URL:  http://127.0.0.1:$PORT"
 echo "   Log:  $HOME/gateway.log"
 echo ""
-echo "Next step: in the Open Gateway app → OpenCode setup →"
-echo "tap 'Set Gateway to 127.0.0.1:3000', then reload the app."
+echo "Next step: open http://127.0.0.1:$PORT in your browser (or Add to Home Screen)."
 if command -v opencode >/dev/null 2>&1; then
   echo "   OpenCode: found ($(opencode --version 2>/dev/null || echo ok))"
 else
