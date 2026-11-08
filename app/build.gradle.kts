@@ -7,13 +7,14 @@ plugins {
 android {
     namespace = "com.opengateway.app"
     compileSdk = 35
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "com.opengateway.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "2.1.3"
+        versionCode = 15
+        versionName = "2.2.0"
         // arm64-only: 99% phones, ~35 MB APK
         ndk { abiFilters += "arm64-v8a" }
     }
@@ -32,6 +33,14 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+    externalNativeBuild {
+        cmake {
+            cppFlags += ""
+            arguments += "-DANDROID_STL=none"
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
     // Kotlin 2.0.21 uses compose compiler plugin (declared in root), no kotlinCompilerExtensionVersion
 }
 

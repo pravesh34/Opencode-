@@ -75,8 +75,32 @@ class OpenCodeRunner(private val ctx: Context) {
     // opencode is ET_EXEC (non-PIE): Android refuses direct exec. Run it through the
     // musl loader (PIE, allowed), which loads the program for us.
     val loader = AssetInstaller.loaderBin(ctx)
+    // Chain: try direct exec (works on devices where app dirs are exec-able),
+    // fall back to running from RAM via memfd (works where the disk is noexec).
+    var resultLines: List<String>? = null
+    var directError: String? = null
+    try {
+      resultLines = runViaProcess(loader, binFile, args, workspace, env)
+    } catch (e: Exception) {
+      directError = e.message
+      Log.w("OpenCodeRunner", "direct exec failed, trying memfd: ${e.message}")
+    }
+    if (resultLines == null) {
+      try {
+        resultLines = runViaMemfd(loader, binFile, args, env)
+      } catch (e: Exception) {
+        emit("[error] direct: $directError\nmemfd: ${e.message}\nSee Settings -> Diagnostics -> Run self-test.")
+        return@flow
+      }
+    }
+    for (line in resultLines) emit(line)
+    return@flow
+  }
+
+  /** Direct exec path (v2.1.3). Throws if the process can't start. */
+  private fun runViaProcess(loader: File, binFile: File, args: List<String>, workspace: File, env: Map<String, String>): List<String> {
     val cmd = listOf(loader.absolutePath, binFile.absolutePath) + args
-    Log.d("OpenCodeRunner", "exec ${cmd.joinToString(" "){"\"$it\""}} perm=$perm")
+    Log.d("OpenCodeRunner", "exec(direct) ${cmd.joinToString(" "){"\"$it\""}}")
     val proc: Process
     try {
       val pb = ProcessBuilder(cmd)
@@ -85,44 +109,72 @@ class OpenCodeRunner(private val ctx: Context) {
       for ((k, v) in env) if (v.isNotBlank()) pb.environment()[k] = v
       proc = pb.start()
     } catch (e: Exception) {
-      emit("[error] failed to start opencode: ${e.message}\nSee Settings -> Diagnostics -> Run self-test, or adb logcat -s OpenCodeRunner.")
-      return@flow
+      throw RuntimeException(e)
     }
     ProcessHelper.watchdog(proc, 10 * 60 * 1000L)
+    val lines = mutableListOf<String>()
     try {
-      proc.inputStream.bufferedReader().useLines { lines ->
-        for (line in lines) {
+      proc.inputStream.bufferedReader().useLines { ls ->
+        for (line in ls) {
           if (line.isBlank()) continue
-          // Try parse JSON event {type,part:{text}} else emit raw
           try {
             val obj = JSONObject(line)
             val part = obj.optJSONObject("part")
             val text = part?.optString("text", "")
-            if (!text.isNullOrBlank()) emit(text)
-            // Phase 4: cost + tool call events (displayed inline as [cost]/[tool])
+            if (!text.isNullOrBlank()) lines.add(text)
             try {
               val cost = part?.optDouble("cost")
-              if (cost != null && !cost.isNaN()) emit("[cost $cost]")
+              if (cost != null && !cost.isNaN()) lines.add("[cost $cost]")
             } catch (_: Exception) {}
             val type = obj.optString("type", "")
             if (type.contains("tool", ignoreCase = true)) {
               val tool = part?.optString("tool", type)
-              emit("[tool $tool]")
+              lines.add("[tool $tool]")
             }
           } catch (_: Exception) {
-            emit(line)
+            lines.add(line)
           }
         }
       }
       val code = proc.waitFor()
-      if (code != 0) emit("\n[opencode exited $code - check Settings -> Diagnostics -> Run self-test, or Settings -> provider/key]")
+      if (code != 0) lines.add("\n[opencode exited $code - check Settings -> Diagnostics -> Run self-test, or Settings -> provider/key]")
     } catch (e: Exception) {
       try { proc.destroyForcibly() } catch (_: Exception) {}
-      emit("[error] opencode stream failed: ${e.message}")
+      throw e
     }
-  }.flowOn(Dispatchers.IO).catch { e ->
-    emit("[error] ${e.message}")
-    Log.w("OpenCodeRunner", "flow crash avoided", e)
+    return lines
+  }
+
+  /** Memfd path (v2.2.0). Stages the binary in RAM and execs it from /proc/self/fd. */
+  private suspend fun runViaMemfd(loader: File, binFile: File, args: List<String>, env: Map<String, String>): List<String> {
+    require(MemfdRunner.isAvailable()) { "memfd launcher unavailable (native lib missing)" }
+    val raw = MemfdRunner.run(loader.absolutePath, binFile.absolutePath, args, env)
+    val header = raw.lineSequence().firstOrNull() ?: ""
+    val exit = header.removePrefix("exit=").substringBefore(' ').toIntOrNull()
+    val out = raw.removePrefix(header).trimStart('\n')
+    val lines = mutableListOf<String>()
+    out.lineSequence().forEach { line ->
+      if (line.isBlank()) return@forEach
+      try {
+        val obj = JSONObject(line)
+        val part = obj.optJSONObject("part")
+        val text = part?.optString("text", "")
+        if (!text.isNullOrBlank()) lines.add(text)
+        try {
+          val cost = part?.optDouble("cost")
+          if (cost != null && !cost.isNaN()) lines.add("[cost $cost]")
+        } catch (_: Exception) {}
+        val type = obj.optString("type", "")
+        if (type.contains("tool", ignoreCase = true)) {
+          val tool = part?.optString("tool", type)
+          lines.add("[tool $tool]")
+        }
+      } catch (_: Exception) {
+        lines.add(line)
+      }
+    }
+    if (exit != null && exit != 0) lines.add("\n[opencode exited $exit (memfd) - check Settings -> Diagnostics -> Run self-test, or Settings -> provider/key]")
+    return lines
   }
 
   /** One-shot diagnostic for Settings -> Diagnostics (no adb needed). */
@@ -130,28 +182,44 @@ class OpenCodeRunner(private val ctx: Context) {
     val sb = StringBuilder()
     AssetInstaller.installIfNeeded(ctx)
     sb.append(AssetInstaller.diagnostics(ctx)).append("\n")
+    // --- Evidence: mount flags + SELinux (no adb needed) ---
+    sb.append(envEvidence()).append("\n")
     val bin = AssetInstaller.opencodeBin(ctx)
     if (!bin.exists()) {
       sb.append("opencode --version: binary missing\n")
       return sb.toString()
     }
-    return try {
-      // opencode is ET_EXEC (non-PIE) — Android denies direct exec. Load via musl loader.
-      val loader = AssetInstaller.loaderBin(ctx)
-      val proc = ProcessBuilder(loader.absolutePath, bin.absolutePath, "--version")
-        .directory(AssetInstaller.workspaceDir(ctx))
-        .redirectErrorStream(true)
-        .start()
-      val out = proc.inputStream.bufferedReader().readText()
-      val code = proc.waitFor()
-      sb.append("opencode --version exit=").append(code).append("\n")
-      sb.append(out)
-      if (out.isBlank()) sb.append("(no output)\n")
+    sb.append("direct exec test: ").append(tryExec("opencode", bin.absolutePath, listOf("--version"))).append("\n")
+    sb.append("busybox exec test: ").append(tryExec("busybox", AssetInstaller.binDir(ctx).resolve("busybox").absolutePath, listOf("echo", "ok"))).append("\n")
+    sb.append("memfd test: ")
+    sb.append(if (!MemfdRunner.isAvailable()) "launcher lib unavailable"
+      else try {
+        val out = MemfdRunner.execAndCapture(
+          AssetInstaller.loaderBin(ctx).absolutePath, bin.absolutePath,
+          arrayOf("--version"), arrayOf()
+        )
+        "exit-and-output: $out"
+      } catch (e: Exception) { "FAILED: ${e.message}" })
+    sb.append("\n")
+    if (!MemfdRunner.isAvailable()) {
+      sb.append("(memfd unavailable in this build)\n")
+      return sb.toString()
+    }
+    try {
+      val lines = runViaMemfdSelfTest()
+      sb.append(lines)
       sb.toString()
     } catch (e: Exception) {
-      sb.append("opencode --version FAILED to start: ").append(e).append("\n")
+      sb.append("loader-pipe test FAILED: ${e.message}\n")
       sb.toString()
     }
+  }
+
+  private fun runViaMemfdSelfTest(): String {
+    val bin = AssetInstaller.opencodeBin(ctx)
+    val loader = AssetInstaller.loaderBin(ctx)
+    val out = MemfdRunner.execAndCapture(loader.absolutePath, bin.absolutePath, arrayOf("--version"), arrayOf())
+    return "loader-pipe --version: " + out.replace("\n", "\\n\n") + "\n"
   }
 }
 
@@ -159,4 +227,32 @@ object ProcessHelper {
   fun watchdog(p: Process, ms: Long) {
     Thread { try { Thread.sleep(ms); if (p.isAlive) p.destroyForcibly() } catch (_: Exception) {} }.apply { isDaemon = true; start() }
   }
+}
+
+/** In-app evidence: mount flags for /data, SELinux enforce, per-binary exec probes. */
+fun envEvidence(): String = buildString {
+  appendLine("--- environment evidence ---")
+  try {
+    val mounts = java.io.File("/proc/mounts").readLines()
+    mounts.firstOrNull { it.contains(" /data ") || it.contains(" /data/user ") }
+      ?.let { appendLine("mount: $it") } ?: appendLine("mount: no /data line found")
+  } catch (e: Exception) {
+    appendLine("mount: unreadable (${e.javaClass.simpleName})")
+  }
+  try {
+    val enforce = java.io.File("/sys/fs/selinux/enforce").readText().trim()
+    appendLine("selinux: ${if (enforce == "1") "enforcing" else "permissive ($enforce)"}")
+  } catch (e: Exception) {
+    appendLine("selinux: unknown (${e.javaClass.simpleName})")
+  }
+  appendLine("--- end evidence ---")
+}
+
+fun tryExec(label: String, path: String, args: List<String>): String = try {
+  val proc = ProcessBuilder(path, *args.toTypedArray()).redirectErrorStream(true).start()
+  val out = proc.inputStream.bufferedReader().readText()
+  val code = proc.waitFor()
+  "$label exit=$code out=${out.take(200).replace("\n", " ")}"
+} catch (e: Exception) {
+  "$label FAILED: ${e.javaClass.simpleName}: ${e.message}"
 }

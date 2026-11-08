@@ -74,6 +74,12 @@ jobs:
           patchelf --print-interpreter "$BIN_DIR/busybox"
           ls -lh "$BIN_DIR"
 
+      - name: Install NDK + CMake
+        run: |
+          export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
+          yes | sdkmanager --licenses || true
+          sdkmanager "cmake;3.22.1" "ndk;26.1.10909125"
+
       - name: Build debug APK + release AAB
         run: |
           if [ -f gradlew ]; then chmod +x gradlew && ./gradlew assembleDebug bundleRelease; else gradle assembleDebug bundleRelease; fi

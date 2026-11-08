@@ -25,7 +25,7 @@ import java.io.File
 object AssetInstaller {
   private const val VERSION_FILE = ".bin_version"
   private const val ASSET_ROOT = "bin/arm64-v8a"
-  const val TARGET_VERSION = "v2.1.3"
+  const val TARGET_VERSION = "v2.2.0"
 
   /** load-bearing: keep in sync with android.yml (paths + patchelf targets). */
   val LIBRARIES = listOf(
