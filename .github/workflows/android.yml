@@ -54,9 +54,7 @@ jobs:
         run: |
           set -e
           if [ -n "$GATEWAY" ]; then echo "GATEWAY_URL=$GATEWAY" >> gradle.properties; fi
-          if [ ! -f gradlew ]; then gradle wrapper --gradle-version "${{ env.GRADLE_VERSION }}"; fi
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --parallel --stacktrace
+          if [ -f gradlew ]; then chmod +x gradlew && ./gradlew assembleDebug --no-daemon --parallel --stacktrace; else gradle assembleDebug --no-daemon --parallel --stacktrace; fi
         env:
           GATEWAY: ${{ inputs.gateway_url }}
 
