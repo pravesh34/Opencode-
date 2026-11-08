@@ -34,7 +34,8 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
 
-      - uses: android-actions/setup-android@v3
+      # ubuntu-latest has Android SDK preinstalled; do not use setup-android@v3
+      # (v3 fails installing deprecated 'tools' package). Keep SDK via setup-java + gradle cache only.
 
       - uses: gradle/actions/setup-gradle@v4
         with:
