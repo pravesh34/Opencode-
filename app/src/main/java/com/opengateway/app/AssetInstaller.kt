@@ -110,7 +110,7 @@ object AssetInstaller {
     val slot = execDir(ctx)
     val lib = libDir(ctx)
     val log = StringBuilder()
-    try {
+    return try {
       val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
       val base = "bin/$abi"
       // Libraries -> filesDir/bin (dlopen home; binaries reference this absolute path)
@@ -118,14 +118,14 @@ object AssetInstaller {
         val out = File(lib, name)
         extractAsset(ctx, "$base/$name", out)
         out.setExecutable(true, false)
-        log.append("lib $name (${out.length()} bytes)\n")
+        log.append("lib ").append(name).append(" (").append(out.length()).append(" bytes)\n")
       }
       // Executables -> probed exec slot
       for (name in EXECUTABLES) {
         val out = File(slot, name)
         extractAsset(ctx, "$base/$name", out)
         out.setExecutable(true, false)
-        log.append("exe $name -> ${out.absolutePath} (${out.length()} bytes)\n")
+        log.append("exe ").append(name).append(" -> ").append(out.absolutePath).append(" (").append(out.length()).append(" bytes)\n")
       }
       File(slot, VERSION_FILE).writeText(TARGET_VERSION)
       workspaceDir(ctx)
@@ -134,9 +134,9 @@ object AssetInstaller {
         ProcessBuilder(File(slot, "busybox").absolutePath, "--install", "-s", slot.absolutePath)
           .redirectErrorStream(true).start().waitFor()
       } catch (e: Exception) {
-        log.append("busybox --install failed (non-fatal): ${e.message}\n")
+        log.append("busybox --install failed (non-fatal): ").append(e.message).append("\n")
       }
-      log.append("extract complete ($TARGET_VERSION) slot=${slot.absolutePath}\n").toString()
+      log.append("extract complete (").append(TARGET_VERSION).append(") slot=").append(slot.absolutePath).append("\n").toString()
     } catch (e: Exception) {
       Log.w("AssetInstaller", "extract failed: ${e.message}", e)
       "FAILED: ${e.message}\n${log}"
