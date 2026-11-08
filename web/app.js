@@ -52,7 +52,11 @@ function fileIcon(e){
 let userName = localStorage.getItem('og_username') || 'Pravesh Sharma';
 function showUserName() {
   const el = $('#user-name');
-  if (el && userName) el.textContent = userName;
+  if (el && userName) {
+    const h = new Date().getHours();
+    const greet = h < 12 ? 'Good Morning' : h < 18 ? 'Good Afternoon' : 'Good Evening';
+    el.textContent = `${greet}, ${userName.split(' ')[0]} ✨`;
+  }
   const inp = $('#username'); if (inp && document.activeElement !== inp) inp.value = userName || '';
 }
 $('#save-username')?.addEventListener('click', () => {
@@ -142,6 +146,8 @@ function chatSubtitle(p) {
 
 // ---------- Rendering ----------
 function renderProjectList() {
+  const pc = $('#projects-count'); if (pc) pc.textContent = `${projects.length} repositories`;
+  const rs = $('#remote-sub'); if (rs) rs.innerHTML = gatewayOnline ? '<span class="sdot" style="background:var(--success)"></span>1 online' : 'offline — tap to open terminal';
   const list = $('#project-list'); if (!list) return;
   const q = ($('#project-search')?.value || '').toLowerCase();
   const items = projects.filter(p => !q || p.name.toLowerCase().includes(q) || (p.cwd||'').toLowerCase().includes(q));
@@ -949,6 +955,13 @@ $('#think-btn')?.addEventListener('click', () => {
 // ---------- Wiring ----------
 $('#new-project-btn').addEventListener('click', ()=>openProjectModal(null));
 $('#fab-new-project')?.addEventListener('click', ()=>openProjectModal(null));
+$('#card-ai-agent')?.addEventListener('click', () => {
+  if (getProject()) showChatView();
+  else { toast('Create a project first'); openProjectModal(null); }
+  document.querySelector('#opencode-input')?.focus();
+});
+$('#card-remote')?.addEventListener('click', () => setMainView('terminal'));
+$('#card-projects')?.addEventListener('click', () => { $('#project-search')?.focus(); });
 $('#empty-new-project').addEventListener('click', ()=>openProjectModal(null));
 $('#project-settings-btn').addEventListener('click', ()=>openProjectModal(activeProjectId));
 $('#project-search').addEventListener('input', renderProjectList);
