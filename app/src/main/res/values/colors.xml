@@ -1,6 +1,7 @@
 <resources>
-    <color name="ic_launcher_background">#00A884</color>
-    <color name="accent">#00A884</color>
-    <color name="accent_light">#25D366</color>
-    <color name="offline_bg">#B3261E</color>
+    <!-- Aether Sakura: matches webapp theme exactly -->
+    <color name="ic_launcher_background">#1A0F1E</color>
+    <color name="accent">#F2B6D6</color>
+    <color name="accent_light">#FDE8F1</color>
+    <color name="offline_bg">#FF7272</color>
 </resources>
