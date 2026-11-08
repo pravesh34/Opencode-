@@ -38,9 +38,6 @@ jobs:
       # (v3 fails installing deprecated 'tools' package). Keep SDK via setup-java + gradle cache only.
 
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
-          cache-readonly: false
 
       # APK ships the latest web UI bundled in app/src/main/assets/gateway
       - name: Sync web assets into APK
