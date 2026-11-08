@@ -375,7 +375,10 @@ function runOpencodeNow(ws, session, pid, sid, message) {
   const fullMessage = s.thinking
     ? 'Think through this carefully and reason step by step before acting. Show your reasoning briefly, then give the result.\n\n' + message
     : message;
-  const args = ['run', '--format', 'json', fullMessage];
+  // --auto is REQUIRED: without it the agent blocks on permission prompts (the "stuck" bug).
+  // --thinking streams reasoning parts so the UI can show them live.
+  const args = ['run', '--auto', '--format', 'json', fullMessage];
+  if (s.thinking) args.push('--thinking');
   if (s.model) args.push('--model', s.model);
   if (s.opencodeSession) args.push('--session', s.opencodeSession);
   const cwd = (p.cwd && fs.existsSync(p.cwd)) ? p.cwd : PROJECT_ROOT;
@@ -410,16 +413,31 @@ function runOpencodeNow(ws, session, pid, sid, message) {
         const ev = JSON.parse(line);
         if (ev.sessionID && !s.opencodeSession) s.opencodeSession = ev.sessionID;
         if (ev.type === 'text' && ev.part && ev.part.text) { gotText = true; safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: ev.part.text }); }
-        else if (ev.type === 'step_finish' && ev.part && ev.part.cost) safeSend(ws, { type: 'opencode_meta', projectId: id, sessionId: ss, text: `cost ${ev.part.cost} · ${JSON.stringify(ev.part.tokens || {})}` });
+        else if (ev.type === 'step_start') safeSend(ws, { type: 'opencode_event', projectId: id, sessionId: ss, text: '▶ step' });
+        else if (ev.type === 'step_finish' && ev.part) {
+          const tok = (ev.part.tokens || {});
+          const parts = [];
+          if (tok.input) parts.push(`in ${tok.input}`);
+          if (tok.output) parts.push(`out ${tok.output}`);
+          if (tok.reasoning) parts.push(`reasoning ${tok.reasoning}`);
+          safeSend(ws, { type: 'opencode_meta', projectId: id, sessionId: ss, text: (ev.part.cost ? `cost ${ev.part.cost} · ` : '') + parts.join(' · ') || 'step done' });
+        }
         else if ((ev.type === 'tool_use' || ev.type === 'tool') && ev.part) {
           gotText = true;
           const name = ev.part.tool || 'tool';
-          const inp = ev.part.input ? JSON.stringify(ev.part.input).slice(0, 120) : '';
-          safeSend(ws, { type: 'opencode_tool', projectId: id, sessionId: ss, text: `🔧 ${name}${inp ? ' ' + inp : ''}` });
+          const state = ev.part.state || {};
+          const inp = state.input || {};
+          let target = '';
+          if (inp.path) target = String(inp.path).split('/').pop();
+          else if (inp.command) target = String(inp.command).slice(0, 80);
+          else if (inp.pattern) target = String(inp.pattern).slice(0, 60);
+          const outcome = state.output ? String(state.output).replace(/\s+/g, ' ').slice(0, 100) : '';
+          const verb = name === 'write' ? '✎ write' : name === 'read' ? '📖 read' : name === 'edit' ? '✎ edit' : name === 'bash' ? '💻 run' : '🔧 ' + name;
+          safeSend(ws, { type: 'opencode_tool', projectId: id, sessionId: ss, text: `${verb}${target ? ' ' + target : ''}${outcome ? ' — ' + outcome : ''}${state.status === 'completed' ? ' ✓' : ''}` });
         }
         else if (ev.type === 'reasoning' || ev.type === 'thinking') {
           const th = ev.part && ev.part.text ? ev.part.text : (ev.text || '');
-          if (th) safeSend(ws, { type: 'opencode_think', projectId: id, sessionId: ss, text: th });
+          if (th && th.trim()) safeSend(ws, { type: 'opencode_think', projectId: id, sessionId: ss, text: th });
         }
         else if (ev.type) safeSend(ws, { type: 'opencode_event', projectId: id, sessionId: ss, text: ev.type });
       } catch { gotText = true; if (line) safeSend(ws, { type: 'opencode_text', projectId: id, sessionId: ss, text: line }); }
