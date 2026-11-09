@@ -27,7 +27,7 @@ A fast, phone-friendly coding workspace that runs on **Mac** and **Android (Term
 
 ### Android phone (Termux, fully on-device)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pravesh34/Opencode-/main/setup-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/pravesh34/Opencode-/code-go/setup-termux.sh | bash
 # then open http://127.0.0.1:3000 in the phone browser (or install the PWA)
 ```
 
